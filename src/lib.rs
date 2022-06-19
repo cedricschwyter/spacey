@@ -27,6 +27,12 @@ enum ParseErrorKind {
     UnexpectedToken,
 }
 
+impl Display for ParseErrorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 #[derive(Debug)]
 struct ParseError {
     msg: String,
@@ -37,7 +43,7 @@ impl Error for ParseError {}
 
 impl Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.msg)
+        write!(f, "{:?}", self)
     }
 }
 
