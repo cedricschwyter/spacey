@@ -4,7 +4,7 @@ use std::error::Error;
 
 fn args() -> ArgMatches {
     App::new("spacey")
-        .about("a whitespace interpreter")
+        .about("a lightweight whitespace interpreter")
         .version("0.1.0")
         .author("Cedric Schwyter <cedricschwyter@bluewin.ch>")
         .arg(
@@ -12,6 +12,7 @@ fn args() -> ArgMatches {
                 .short('f')
                 .long("file")
                 .takes_value(true)
+                .required(true)
                 .help("whitespace source file to interpret"),
         )
         .get_matches()
