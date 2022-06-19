@@ -20,7 +20,7 @@ fn args() -> ArgMatches {
 fn main() -> Result<(), Box<dyn Error>> {
     let args = args();
     let file_name = args.value_of("file").unwrap();
-    let interpreter = Interpreter::new(file_name);
+    let interpreter = Interpreter::new(file_name)?;
 
     interpreter.run()?;
 

@@ -8,9 +8,14 @@ struct Parser {
 }
 
 #[derive(Debug)]
-pub struct Interpreter<'a> {
-    file_name: &'a str,
+struct InterpreterContext {
     labels: Vec<String>,
+}
+
+#[derive(Debug)]
+pub struct Interpreter {
+    parser: Parser,
+    interpreter: InterpreterContext,
 }
 
 #[derive(Debug)]
@@ -52,33 +57,34 @@ pub struct Instruction {
     param: Option<ParamType>,
 }
 
-impl Interpreter<'_> {
-    pub fn new(file_name: &str) -> Interpreter {
+impl InterpreterContext {
+    fn new() -> InterpreterContext {
         let labels = vec![];
 
-        Interpreter { file_name, labels }
+        InterpreterContext { labels }
+    }
+}
+
+impl Interpreter {
+    pub fn new(file_name: &str) -> Result<Interpreter, Box<dyn Error>> {
+        let parser = Parser::new(file_name)?;
+        let interpreter = InterpreterContext::new();
+
+        Ok(Interpreter {
+            parser,
+            interpreter,
+        })
     }
 
     pub fn run(self) -> Result<(), Box<dyn Error>> {
-        let parser = Parser::new(&self.file_name)?;
-        self.run_all(parser)?;
-
-        Ok(())
-    }
-
-    fn run_all(self, parser: Parser) -> Result<(), Box<dyn Error>> {
-        for instr in parser {
-            match self.exec(instr) {
+        for instr in self.parser {
+            match self.interpreter.exec(instr) {
                 Ok(_) => continue,
                 Err(err) => return Err(err),
             };
         }
 
         Ok(())
-    }
-
-    pub fn exec(&self, instr: Instruction) -> Result<(), Box<dyn Error>> {
-        todo!("implement execution logic here");
     }
 }
 
@@ -95,10 +101,16 @@ impl Parser {
     }
 }
 
-impl<'a> Iterator for Parser {
+impl Iterator for Parser {
     type Item = Instruction;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.instruction()
+    }
+}
+
+impl InterpreterContext {
+    pub fn exec(&self, instr: Instruction) -> Result<(), Box<dyn Error>> {
+        todo!("implement execution logic here");
     }
 }
