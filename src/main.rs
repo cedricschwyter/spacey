@@ -1,10 +1,6 @@
 use clap::{App, Arg, ArgMatches};
-
-enum LexicalTokenType {
-    Space,
-    Tab,
-    Linefeed,
-}
+use spacey::Interpreter;
+use std::error::Error;
 
 fn args() -> ArgMatches {
     App::new("spacey")
@@ -21,7 +17,12 @@ fn args() -> ArgMatches {
         .get_matches()
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn Error>> {
     let args = args();
-    let file = args.value_of("file").unwrap();
+    let file_name = args.value_of("file").unwrap();
+    let interpreter = Interpreter::new(file_name);
+
+    interpreter.run()?;
+
+    Ok(())
 }
