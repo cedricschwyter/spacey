@@ -35,6 +35,7 @@ impl Display for ParseErrorKind {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct ParseError {
     msg: String,
     kind: ParseErrorKind,
@@ -215,72 +216,82 @@ impl Parser {
         )))
     }
 
+    fn stack(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
+        if let Some(val) = self.next() {
+            return match val {
+                SPACE => Some(Ok(CommandKind::PushStack)),
+                TAB => {
+                    if let Some(val) = self.next() {
+                        return match val {
+                            SPACE => Some(Ok(CommandKind::CopyNthStack)),
+                            LINE_FEED => Some(Ok(CommandKind::SlideNStack)),
+                            _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
+                                self.index,
+                                val,
+                                vec![SPACE, LINE_FEED],
+                            ))),
+                        };
+                    }
+                    Some(self.throw(ParseErrorKind::InvalidToken(
+                        self.index,
+                        vec![SPACE, LINE_FEED],
+                    )))
+                }
+                LINE_FEED => {
+                    if let Some(val) = self.next() {
+                        return match val {
+                            SPACE => Some(Ok(CommandKind::DuplicateStack)),
+                            TAB => Some(Ok(CommandKind::SwapStack)),
+                            LINE_FEED => Some(Ok(CommandKind::DiscardStack)),
+                            _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
+                                self.index,
+                                val,
+                                vec![SPACE, TAB, LINE_FEED],
+                            ))),
+                        };
+                    }
+                    Some(self.throw(ParseErrorKind::InvalidToken(
+                        self.index,
+                        vec![SPACE, TAB, LINE_FEED],
+                    )))
+                }
+                _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
+                    self.index,
+                    val,
+                    vec![SPACE, TAB, LINE_FEED],
+                ))),
+            };
+        }
+
+        Some(self.throw(ParseErrorKind::InvalidToken(
+            self.index,
+            vec![SPACE, TAB, LINE_FEED],
+        )))
+    }
+
+    fn arithmetic(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
+        unimplemented!()
+    }
+
+    fn heap(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
+        unimplemented!()
+    }
+
+    fn flow(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
+        unimplemented!()
+    }
+
+    fn io(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
+        unimplemented!()
+    }
+
     fn cmd(&mut self, imp: ImpKind) -> Option<Result<CommandKind, Box<dyn Error>>> {
         match imp {
-            ImpKind::Stack => {
-                if let Some(val) = self.next() {
-                    return match val {
-                        SPACE => Some(Ok(CommandKind::PushStack)),
-                        TAB => {
-                            if let Some(val) = self.next() {
-                                return match val {
-                                    SPACE => Some(Ok(CommandKind::CopyNthStack)),
-                                    LINE_FEED => Some(Ok(CommandKind::SlideNStack)),
-                                    _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
-                                        self.index,
-                                        val,
-                                        vec![SPACE, LINE_FEED],
-                                    ))),
-                                };
-                            }
-                            Some(self.throw(ParseErrorKind::InvalidToken(
-                                self.index,
-                                vec![SPACE, LINE_FEED],
-                            )))
-                        }
-                        LINE_FEED => {
-                            if let Some(val) = self.next() {
-                                return match val {
-                                    SPACE => Some(Ok(CommandKind::DuplicateStack)),
-                                    TAB => Some(Ok(CommandKind::SwapStack)),
-                                    LINE_FEED => Some(Ok(CommandKind::DiscardStack)),
-                                    _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
-                                        self.index,
-                                        val,
-                                        vec![SPACE, TAB, LINE_FEED],
-                                    ))),
-                                };
-                            }
-                            Some(self.throw(ParseErrorKind::InvalidToken(
-                                self.index,
-                                vec![SPACE, TAB, LINE_FEED],
-                            )))
-                        }
-                        _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
-                            self.index,
-                            val,
-                            vec![SPACE, TAB, LINE_FEED],
-                        ))),
-                    };
-                }
-
-                Some(self.throw(ParseErrorKind::InvalidToken(
-                    self.index,
-                    vec![SPACE, TAB, LINE_FEED],
-                )))
-            }
-            ImpKind::Arithmetic => {
-                unimplemented!()
-            }
-            ImpKind::Heap => {
-                unimplemented!()
-            }
-            ImpKind::Flow => {
-                unimplemented!()
-            }
-            ImpKind::IO => {
-                unimplemented!()
-            }
+            ImpKind::Stack => Some(self.stack()?),
+            ImpKind::Arithmetic => Some(self.arithmetic()?),
+            ImpKind::Heap => Some(self.heap()?),
+            ImpKind::Flow => Some(self.flow()?),
+            ImpKind::IO => Some(self.io()?),
         }
     }
 
@@ -398,11 +409,38 @@ mod tests {
     #[test]
     fn stack() -> Result<(), Box<dyn Error>> {
         let interpreter = Interpreter::new("ws/stack.ws")?;
-        let results = vec![Instruction {
-            imp: ImpKind::Stack,
-            cmd: CommandKind::PushStack,
-            param: Some(ParamKind::Number(64)),
-        }];
+        let results = vec![
+            Instruction {
+                imp: ImpKind::Stack,
+                cmd: CommandKind::PushStack,
+                param: Some(ParamKind::Number(64)),
+            },
+            Instruction {
+                imp: ImpKind::Stack,
+                cmd: CommandKind::DuplicateStack,
+                param: None,
+            },
+            Instruction {
+                imp: ImpKind::Stack,
+                cmd: CommandKind::CopyNthStack,
+                param: Some(ParamKind::Number(64)),
+            },
+            Instruction {
+                imp: ImpKind::Stack,
+                cmd: CommandKind::SwapStack,
+                param: None,
+            },
+            Instruction {
+                imp: ImpKind::Stack,
+                cmd: CommandKind::DiscardStack,
+                param: None,
+            },
+            Instruction {
+                imp: ImpKind::Stack,
+                cmd: CommandKind::SlideNStack,
+                param: Some(ParamKind::Number(64)),
+            },
+        ];
         for (i, instr) in interpreter.enumerate() {
             if i == results.len() {
                 break;
