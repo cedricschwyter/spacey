@@ -73,6 +73,7 @@ enum CommandKind {
     StoreHeap,
     RetrieveHeap,
     Mark,
+    Call,
     Jump,
     JumpZero,
     JumpNegative,
@@ -85,16 +86,24 @@ enum CommandKind {
 }
 
 impl CommandKind {
-    fn requires_param(&self) -> bool {
+    fn param_kind(&self) -> Option<ParamKind> {
         match self {
-            _ => false,
+            CommandKind::PushStack | CommandKind::CopyNthStack | CommandKind::SlideNStack => {
+                Some(ParamKind::Number(0))
+            }
+            CommandKind::Mark
+            | CommandKind::Call
+            | CommandKind::Jump
+            | CommandKind::JumpZero
+            | CommandKind::JumpNegative => Some(ParamKind::Label("".to_string())),
+            _ => None,
         }
     }
 }
 
 #[derive(Debug, PartialEq)]
-enum ParamType {
-    Number(u32),
+enum ParamKind {
+    Number(i32),
     Label(String),
 }
 
@@ -102,7 +111,7 @@ enum ParamType {
 pub struct Instruction {
     imp: ImpKind,
     cmd: CommandKind,
-    param: Option<ParamType>,
+    param: Option<ParamKind>,
 }
 
 impl InterpreterContext {
@@ -275,8 +284,57 @@ impl Parser {
         }
     }
 
-    fn param(&mut self, cmd: &CommandKind) -> Option<Result<ParamType, Box<dyn Error>>> {
-        unimplemented!();
+    fn number(&mut self, sign: i32) -> Option<Result<ParamKind, Box<dyn Error>>> {
+        let mut places = Vec::new();
+        let mut failure = None;
+        while let Some(val) = self.next() {
+            places.push(match val {
+                SPACE => 0,
+                TAB => 1,
+                LINE_FEED => {
+                    break;
+                }
+                _ => {
+                    failure = Some(self.throw(ParseErrorKind::UnexpectedToken(
+                        self.index,
+                        val,
+                        vec![SPACE, TAB],
+                    )));
+                    break;
+                }
+            });
+        }
+        if failure.is_some() {
+            return failure;
+        }
+        let mut res = 0;
+        let mut place = 0;
+        while let Some(val) = places.pop() {
+            res += val * (2_i32.pow(place));
+            place += 1;
+        }
+
+        Some(Ok(ParamKind::Number(sign * res)))
+    }
+
+    fn param(&mut self, kind: ParamKind) -> Option<Result<ParamKind, Box<dyn Error>>> {
+        match kind {
+            ParamKind::Label(_) => Some(Ok(ParamKind::Label("".to_string()))),
+            ParamKind::Number(_) => {
+                if let Some(val) = self.next() {
+                    return match val {
+                        SPACE => self.number(1),
+                        TAB => self.number(-1),
+                        _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
+                            self.index,
+                            val,
+                            vec![SPACE, TAB],
+                        ))),
+                    };
+                }
+                Some(self.throw(ParseErrorKind::InvalidToken(self.index, vec![SPACE, TAB])))
+            }
+        }
     }
 
     fn instruction(&mut self) -> Option<Result<Instruction, Box<dyn Error>>> {
@@ -285,8 +343,9 @@ impl Parser {
             let cmd = self.cmd(imp)?;
             if let Ok(cmd) = cmd {
                 let mut param = None;
-                if cmd.requires_param() {
-                    let par = self.param(&cmd)?;
+                let kind = cmd.param_kind();
+                if let Some(kind) = kind {
+                    let par = self.param(kind)?;
                     if let Ok(par) = par {
                         param = Some(par);
                     } else if let Err(err) = par {
@@ -331,6 +390,8 @@ impl InterpreterContext {
 
 #[cfg(test)]
 mod tests {
+    use crate::ParamKind;
+
     use super::{CommandKind, ImpKind, Instruction, Interpreter};
     use std::error::Error;
 
@@ -339,8 +400,8 @@ mod tests {
         let interpreter = Interpreter::new("ws/stack.ws")?;
         let results = vec![Instruction {
             imp: ImpKind::Stack,
-            cmd: CommandKind::DuplicateStack,
-            param: None,
+            cmd: CommandKind::PushStack,
+            param: Some(ParamKind::Number(64)),
         }];
         for (i, instr) in interpreter.enumerate() {
             if i == results.len() {
