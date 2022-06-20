@@ -22,9 +22,10 @@ pub struct Interpreter {
     interpreter: InterpreterContext,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum ParseErrorKind {
-    UnexpectedToken,
+    InvalidToken(usize, Vec<u8>),
+    UnexpectedToken(usize, u8, Vec<u8>),
 }
 
 impl Display for ParseErrorKind {
@@ -47,7 +48,7 @@ impl Display for ParseError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 enum ImpKind {
     Stack,
     Arithmetic,
@@ -56,17 +57,49 @@ enum ImpKind {
     IO,
 }
 
-#[derive(Debug)]
-enum CommandKind {}
+#[derive(Debug, PartialEq, Clone, Copy)]
+enum CommandKind {
+    PushStack,
+    DuplicateStack,
+    CopyNthStack,
+    SwapStack,
+    DiscardStack,
+    SlideNStack,
+    Add,
+    Subtract,
+    Multiply,
+    IntegerDivision,
+    Modulo,
+    StoreHeap,
+    RetrieveHeap,
+    Mark,
+    Jump,
+    JumpZero,
+    JumpNegative,
+    Return,
+    Exit,
+    OutCharacter,
+    OutInteger,
+    ReadCharacter,
+    ReadInteger,
+}
 
-#[derive(Debug)]
+impl CommandKind {
+    fn requires_param(&self) -> bool {
+        match self {
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
 enum ParamType {
     Number(u32),
     Label(String),
 }
 
-#[derive(Debug)]
-struct Instruction {
+#[derive(Debug, PartialEq)]
+pub struct Instruction {
     imp: ImpKind,
     cmd: CommandKind,
     param: Option<ParamType>,
@@ -109,80 +142,137 @@ impl Parser {
         Ok(Parser { source, index })
     }
 
-    fn throw<T>(&self, msg: String, kind: ParseErrorKind) -> Result<T, Box<dyn Error>> {
+    fn throw<T>(&self, kind: ParseErrorKind) -> Result<T, Box<dyn Error>> {
+        let msg = match &kind {
+            ParseErrorKind::UnexpectedToken(pos, token, tokens) => format!(
+                "unexpected token at position {}, expected one of {:?}, but got {}",
+                pos,
+                tokens.iter().map(|b| *b as char).collect::<Vec<_>>(),
+                *token as char
+            ),
+            ParseErrorKind::InvalidToken(pos, tokens) => format!(
+                "unexpected token at position {}, expected one of {:?}",
+                pos,
+                tokens.iter().map(|b| *b as char).collect::<Vec<_>>(),
+            ),
+        };
         Err(Box::new(ParseError { msg, kind }))
-    }
-
-    fn current(&self) -> u8 {
-        self.source[self.index]
     }
 
     fn next(&mut self) -> Option<u8> {
         if self.index < self.source.len() - 1 {
-            return Some(self.source[self.index + 1]);
+            self.index += 1;
+            return Some(self.source[self.index - 1]);
         }
         None
-    }
-
-    fn accept(&mut self, sym: u8) -> Option<u8> {
-        if self.current() == sym {
-            return self.next();
-        }
-        None
-    }
-
-    fn expect(&mut self, sym: u8) -> Result<(), Box<dyn Error>> {
-        if self.accept(sym).is_some() {
-            return Ok(());
-        }
-        self.throw(
-            format!(
-                "expected {}, got {} at position {}",
-                sym,
-                self.current(),
-                self.index
-            ),
-            ParseErrorKind::UnexpectedToken,
-        )
     }
 
     fn imp(&mut self) -> Option<Result<ImpKind, Box<dyn Error>>> {
-        if self.accept(SPACE).is_some() {
-            return Some(Ok(ImpKind::Stack));
-        }
-        if self.accept(TAB).is_some() {
-            if let Some(val) = self.next() {
-                return match val {
-                    SPACE => Some(Ok(ImpKind::Arithmetic)),
-                    TAB => Some(Ok(ImpKind::Heap)),
-                    LINE_FEED => Some(Ok(ImpKind::IO)),
-                    _ => Some(self.throw(
-                        format!(
-                            "expected one of SPACE, TAB or LINE_FEED, but got {} at position {}",
-                            val, self.index
-                        ),
-                        ParseErrorKind::UnexpectedToken,
-                    )),
-                };
-            } else {
-                return None;
-            }
-        }
-        if self.accept(LINE_FEED).is_some() {
-            return Some(Ok(ImpKind::Flow));
+        if let Some(val) = self.next() {
+            return match val {
+                SPACE => Some(Ok(ImpKind::Stack)),
+                TAB => {
+                    if let Some(val) = self.next() {
+                        match val {
+                            SPACE => Some(Ok(ImpKind::Arithmetic)),
+                            TAB => Some(Ok(ImpKind::Heap)),
+                            LINE_FEED => Some(Ok(ImpKind::IO)),
+                            _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
+                                self.index,
+                                val,
+                                vec![SPACE, TAB, LINE_FEED],
+                            ))),
+                        }
+                    } else {
+                        Some(self.throw(ParseErrorKind::UnexpectedToken(
+                            self.index,
+                            val,
+                            vec![SPACE, TAB, LINE_FEED],
+                        )))
+                    }
+                }
+                LINE_FEED => Some(Ok(ImpKind::Flow)),
+                _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
+                    self.index,
+                    val,
+                    vec![SPACE, TAB, LINE_FEED],
+                ))),
+            };
         }
 
-        Some(self.throw(
-            format!(
-                "no valid token found at position {}, expected one of SPACE, TAB or LINE_FEED",
-                self.index
-            ),
-            ParseErrorKind::UnexpectedToken,
-        ))
+        Some(self.throw(ParseErrorKind::InvalidToken(
+            self.index,
+            vec![SPACE, TAB, LINE_FEED],
+        )))
     }
 
-    fn cmd(&mut self, imp: &ImpKind) -> Option<Result<CommandKind, Box<dyn Error>>> {
-        unimplemented!();
+    fn cmd(&mut self, imp: ImpKind) -> Option<Result<CommandKind, Box<dyn Error>>> {
+        match imp {
+            ImpKind::Stack => {
+                if let Some(val) = self.next() {
+                    return match val {
+                        SPACE => Some(Ok(CommandKind::PushStack)),
+                        TAB => {
+                            if let Some(val) = self.next() {
+                                return match val {
+                                    SPACE => Some(Ok(CommandKind::CopyNthStack)),
+                                    LINE_FEED => Some(Ok(CommandKind::SlideNStack)),
+                                    _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
+                                        self.index,
+                                        val,
+                                        vec![SPACE, LINE_FEED],
+                                    ))),
+                                };
+                            }
+                            Some(self.throw(ParseErrorKind::InvalidToken(
+                                self.index,
+                                vec![SPACE, LINE_FEED],
+                            )))
+                        }
+                        LINE_FEED => {
+                            if let Some(val) = self.next() {
+                                return match val {
+                                    SPACE => Some(Ok(CommandKind::DuplicateStack)),
+                                    TAB => Some(Ok(CommandKind::SwapStack)),
+                                    LINE_FEED => Some(Ok(CommandKind::DiscardStack)),
+                                    _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
+                                        self.index,
+                                        val,
+                                        vec![SPACE, TAB, LINE_FEED],
+                                    ))),
+                                };
+                            }
+                            Some(self.throw(ParseErrorKind::InvalidToken(
+                                self.index,
+                                vec![SPACE, TAB, LINE_FEED],
+                            )))
+                        }
+                        _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
+                            self.index,
+                            val,
+                            vec![SPACE, TAB, LINE_FEED],
+                        ))),
+                    };
+                }
+
+                Some(self.throw(ParseErrorKind::InvalidToken(
+                    self.index,
+                    vec![SPACE, TAB, LINE_FEED],
+                )))
+            }
+            ImpKind::Arithmetic => {
+                unimplemented!()
+            }
+            ImpKind::Heap => {
+                unimplemented!()
+            }
+            ImpKind::Flow => {
+                unimplemented!()
+            }
+            ImpKind::IO => {
+                unimplemented!()
+            }
+        }
     }
 
     fn param(&mut self, cmd: &CommandKind) -> Option<Result<ParamType, Box<dyn Error>>> {
@@ -192,15 +282,18 @@ impl Parser {
     fn instruction(&mut self) -> Option<Result<Instruction, Box<dyn Error>>> {
         let imp = self.imp()?;
         if let Ok(imp) = imp {
-            let cmd = self.cmd(&imp)?;
+            let cmd = self.cmd(imp)?;
             if let Ok(cmd) = cmd {
-                // TODO: add param for instructions with parameter
-                let param = self.param(&cmd);
-                let instr = Instruction {
-                    imp,
-                    cmd,
-                    param: None,
+                let mut param = None;
+                if cmd.requires_param() {
+                    let par = self.param(&cmd)?;
+                    if let Ok(par) = par {
+                        param = Some(par);
+                    } else if let Err(err) = par {
+                        return Some(Err(err));
+                    }
                 };
+                let instr = Instruction { imp, cmd, param };
 
                 return Some(Ok(instr));
             } else if let Err(err) = cmd {
@@ -222,8 +315,42 @@ impl Iterator for Parser {
     }
 }
 
+impl Iterator for Interpreter {
+    type Item = Result<Instruction, Box<dyn Error>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.parser.instruction()
+    }
+}
+
 impl InterpreterContext {
     pub fn exec(&self, instr: Instruction) -> Result<(), Box<dyn Error>> {
         todo!("implement execution logic here");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CommandKind, ImpKind, Instruction, Interpreter};
+    use std::error::Error;
+
+    #[test]
+    fn stack() -> Result<(), Box<dyn Error>> {
+        let interpreter = Interpreter::new("ws/stack.ws")?;
+        let results = vec![Instruction {
+            imp: ImpKind::Stack,
+            cmd: CommandKind::DuplicateStack,
+            param: None,
+        }];
+        for (i, instr) in interpreter.enumerate() {
+            if i == results.len() {
+                break;
+            }
+            if let Ok(instr) = instr {
+                assert_eq!(instr, results[i]);
+            }
+        }
+
+        Ok(())
     }
 }
