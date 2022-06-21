@@ -311,16 +311,67 @@ impl Parser {
     fn flow(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
         let val = self.next()?;
         match val {
+            SPACE => {
+                if let Some(val) = self.next() {
+                    return match val {
+                        SPACE => Some(Ok(CommandKind::Mark)),
+                        TAB => Some(Ok(CommandKind::Call)),
+                        LINE_FEED => Some(Ok(CommandKind::Jump)),
+                        _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
+                            self.index,
+                            val,
+                            vec![SPACE, TAB, LINE_FEED],
+                        ))),
+                    };
+                }
+
+                Some(self.throw(ParseErrorKind::InvalidToken(
+                    self.index,
+                    vec![SPACE, TAB, LINE_FEED],
+                )))
+            }
+            TAB => {
+                if let Some(val) = self.next() {
+                    return match val {
+                        SPACE => Some(Ok(CommandKind::JumpZero)),
+                        TAB => Some(Ok(CommandKind::JumpNegative)),
+                        LINE_FEED => Some(Ok(CommandKind::Return)),
+                        _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
+                            self.index,
+                            val,
+                            vec![SPACE, TAB, LINE_FEED],
+                        ))),
+                    };
+                }
+
+                Some(self.throw(ParseErrorKind::InvalidToken(
+                    self.index,
+                    vec![SPACE, TAB, LINE_FEED],
+                )))
+            }
             LINE_FEED => {
                 if let Some(val) = self.next() {
                     return match val {
                         LINE_FEED => Some(Ok(CommandKind::Exit)),
-                        _ => unimplemented!(),
+                        _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
+                            self.index,
+                            val,
+                            vec![LINE_FEED],
+                        ))),
                     };
                 }
-                unimplemented!()
+
+                Some(self.throw(ParseErrorKind::UnexpectedToken(
+                    self.index,
+                    val,
+                    vec![LINE_FEED],
+                )))
             }
-            _ => unimplemented!(),
+            _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
+                self.index,
+                val,
+                vec![SPACE, TAB, LINE_FEED],
+            ))),
         }
     }
 
@@ -416,9 +467,35 @@ impl Parser {
         Some(Ok(ParamKind::Number(sign * res)))
     }
 
+    fn label(&mut self) -> Option<Result<ParamKind, Box<dyn Error>>> {
+        let mut failure = None;
+        let mut result = Vec::new();
+        while let Some(val) = self.next() {
+            result.push(match val {
+                SPACE => SPACE,
+                TAB => TAB,
+                LINE_FEED => break,
+                _ => {
+                    failure = Some(self.throw(ParseErrorKind::UnexpectedToken(
+                        self.index,
+                        val,
+                        vec![SPACE, TAB, LINE_FEED],
+                    )));
+                    break;
+                }
+            });
+        }
+        if failure.is_some() {
+            return failure;
+        }
+        let result = String::from_utf8(result).ok()?;
+
+        Some(Ok(ParamKind::Label(result)))
+    }
+
     fn param(&mut self, kind: ParamKind) -> Option<Result<ParamKind, Box<dyn Error>>> {
         match kind {
-            ParamKind::Label(_) => Some(Ok(ParamKind::Label("".to_string()))),
+            ParamKind::Label(_) => self.label(),
             ParamKind::Number(_) => {
                 if let Some(val) = self.next() {
                     return match val {
@@ -607,6 +684,50 @@ mod tests {
             Instruction {
                 imp: ImpKind::Heap,
                 cmd: CommandKind::RetrieveHeap,
+                param: None,
+            },
+            Instruction {
+                imp: ImpKind::Flow,
+                cmd: CommandKind::Exit,
+                param: None,
+            },
+        ];
+
+        test_parse(interpreter, results)
+    }
+
+    #[test]
+    fn flow() -> Result<(), Box<dyn Error>> {
+        let interpreter = Interpreter::new("ws/flow.ws")?;
+        let results = vec![
+            Instruction {
+                imp: ImpKind::Flow,
+                cmd: CommandKind::Mark,
+                param: Some(ParamKind::Label(" \t \t \t".to_string())),
+            },
+            Instruction {
+                imp: ImpKind::Flow,
+                cmd: CommandKind::Call,
+                param: Some(ParamKind::Label(" \t \t \t".to_string())),
+            },
+            Instruction {
+                imp: ImpKind::Flow,
+                cmd: CommandKind::Jump,
+                param: Some(ParamKind::Label(" \t \t \t".to_string())),
+            },
+            Instruction {
+                imp: ImpKind::Flow,
+                cmd: CommandKind::JumpZero,
+                param: Some(ParamKind::Label(" \t \t \t".to_string())),
+            },
+            Instruction {
+                imp: ImpKind::Flow,
+                cmd: CommandKind::JumpNegative,
+                param: Some(ParamKind::Label(" \t \t \t".to_string())),
+            },
+            Instruction {
+                imp: ImpKind::Flow,
+                cmd: CommandKind::Return,
                 param: None,
             },
             Instruction {
