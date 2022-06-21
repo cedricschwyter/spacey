@@ -705,19 +705,83 @@ impl InterpreterContext {
     }
 
     fn arithmetic(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
-        unimplemented!()
+        match instr.cmd {
+            CommandKind::Add => {
+                if let Some(left) = self.stack.pop() {
+                    if let Some(right) = self.stack.pop() {
+                        self.stack.push(left + right);
+
+                        return Ok(());
+                    }
+                }
+
+                InterpretErrorKind::StackUnderflow(instr).throw()
+            }
+            CommandKind::Subtract => {
+                if let Some(left) = self.stack.pop() {
+                    if let Some(right) = self.stack.pop() {
+                        self.stack.push(left - right);
+
+                        return Ok(());
+                    }
+                }
+
+                InterpretErrorKind::StackUnderflow(instr).throw()
+            }
+            CommandKind::Multiply => {
+                if let Some(left) = self.stack.pop() {
+                    if let Some(right) = self.stack.pop() {
+                        self.stack.push(left * right);
+
+                        return Ok(());
+                    }
+                }
+
+                InterpretErrorKind::StackUnderflow(instr).throw()
+            }
+            CommandKind::IntegerDivision => {
+                if let Some(left) = self.stack.pop() {
+                    if let Some(right) = self.stack.pop() {
+                        self.stack.push(left / right);
+
+                        return Ok(());
+                    }
+                }
+
+                InterpretErrorKind::StackUnderflow(instr).throw()
+            }
+            CommandKind::Modulo => {
+                if let Some(left) = self.stack.pop() {
+                    if let Some(right) = self.stack.pop() {
+                        self.stack.push(left % right);
+
+                        return Ok(());
+                    }
+                }
+
+                InterpretErrorKind::StackUnderflow(instr).throw()
+            }
+            _ => InterpretErrorKind::ParseLogicError(instr).throw(),
+        }
     }
 
     fn heap(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
-        unimplemented!()
+        match instr.cmd {
+            _ => InterpretErrorKind::ParseLogicError(instr).throw(),
+        }
     }
 
     fn flow(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
-        unimplemented!()
+        match instr.cmd {
+            CommandKind::Exit => Ok(()),
+            _ => InterpretErrorKind::ParseLogicError(instr).throw(),
+        }
     }
 
     fn io(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
-        unimplemented!()
+        match instr.cmd {
+            _ => InterpretErrorKind::ParseLogicError(instr).throw(),
+        }
     }
 
     pub fn exec(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
@@ -972,9 +1036,25 @@ mod tests {
     #[test]
     fn interpret_stack() -> Result<(), Box<dyn Error>> {
         let mut interpreter = Interpreter::new("ws/interpret_stack.ws")?;
+
         interpreter.run()?;
 
         assert_eq!(interpreter.interpreter.stack, vec![-1]);
+        assert!(interpreter.interpreter.heap.is_empty());
+        assert!(interpreter.interpreter.labels.is_empty());
+
+        Ok(())
+    }
+
+    #[test]
+    fn interpret_arithmetic() -> Result<(), Box<dyn Error>> {
+        let mut interpreter = Interpreter::new("ws/interpret_arithmetic.ws")?;
+
+        interpreter.run()?;
+
+        assert_eq!(interpreter.interpreter.stack, vec![3]);
+        assert!(interpreter.interpreter.heap.is_empty());
+        assert!(interpreter.interpreter.labels.is_empty());
 
         Ok(())
     }
