@@ -74,7 +74,7 @@ impl Display for ParseError {
 enum InterpretErrorKind {
     ParseLogicError(Instruction),
     StackUnderflow(Instruction),
-    NumericalError(Instruction),
+    NumberOutOfBoundsError(Instruction, i32, i32, i32),
 }
 
 impl Display for InterpretErrorKind {
@@ -88,7 +88,7 @@ impl InterpretErrorKind {
         let msg = match &self {
             InterpretErrorKind::ParseLogicError(instr) => format!("the parser delivered an inconsistent state, something is severely broken from an application logic point of view. in other words: engineer fucked up. if you receive this error message please make sure to report this as an issue (with the whitespace source) over at https://github.com/d3psi/spacey/issues. thank you. issue occurred when attempting to execute: {:?}", instr),
             InterpretErrorKind::StackUnderflow(instr) => format!("stack is empty - failed executing: {:?}", instr),
-            InterpretErrorKind::NumericalError(instr) => format!("number is out of bounds for: {:?}", instr),
+            InterpretErrorKind::NumberOutOfBoundsError(instr, num, low, high) => format!("number is out of bounds for: {:?}, expected in the closed interval bounded by {} and {}, but was {}", instr, low, high, num),
         };
         Err(Box::new(InterpretError { msg, kind: self }))
     }
@@ -201,8 +201,8 @@ impl Interpreter {
         })
     }
 
-    pub fn run(mut self) -> Result<(), Box<dyn Error>> {
-        for instr in self.parser {
+    pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
+        for instr in &mut self.parser {
             self.interpreter.exec(instr?)?;
         }
 
@@ -578,7 +578,7 @@ impl Parser {
     }
 }
 
-impl Iterator for Parser {
+impl Iterator for &mut Parser {
     type Item = Result<Instruction, Box<dyn Error>>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -618,8 +618,14 @@ impl InterpreterContext {
             }
             CommandKind::CopyNthStack => {
                 if let Some(ParamKind::Number(val)) = instr.param {
-                    if val < 0 {
-                        return InterpretErrorKind::NumericalError(instr).throw();
+                    if val < 0 || val as usize > self.stack.len() - 1 {
+                        return InterpretErrorKind::NumberOutOfBoundsError(
+                            instr,
+                            val,
+                            0,
+                            self.stack.len() as i32 - 1,
+                        )
+                        .throw();
                     }
                     let val = val as usize;
                     self.stack.push(self.stack[val]);
@@ -653,7 +659,13 @@ impl InterpreterContext {
                 if let Some(top) = self.stack.pop() {
                     if let Some(ParamKind::Number(val)) = instr.param {
                         if val < 0 {
-                            return InterpretErrorKind::NumericalError(instr).throw();
+                            return InterpretErrorKind::NumberOutOfBoundsError(
+                                instr,
+                                val,
+                                0,
+                                i32::MAX,
+                            )
+                            .throw();
                         }
                         for _i in 0..val {
                             self.stack.pop();
@@ -725,8 +737,8 @@ mod tests {
     }
 
     #[test]
-    fn stack() -> Result<(), Box<dyn Error>> {
-        let interpreter = Interpreter::new("ws/stack.ws")?;
+    fn parse_stack() -> Result<(), Box<dyn Error>> {
+        let interpreter = Interpreter::new("ws/parse_stack.ws")?;
         let results = vec![
             Instruction {
                 imp: ImpKind::Stack,
@@ -776,8 +788,8 @@ mod tests {
     }
 
     #[test]
-    fn arithmetic() -> Result<(), Box<dyn Error>> {
-        let interpreter = Interpreter::new("ws/arithmetic.ws")?;
+    fn parse_arithmetic() -> Result<(), Box<dyn Error>> {
+        let interpreter = Interpreter::new("ws/parse_arithmetic.ws")?;
         let results = vec![
             Instruction {
                 imp: ImpKind::Arithmetic,
@@ -821,8 +833,8 @@ mod tests {
     }
 
     #[test]
-    fn heap() -> Result<(), Box<dyn Error>> {
-        let interpreter = Interpreter::new("ws/heap.ws")?;
+    fn parse_heap() -> Result<(), Box<dyn Error>> {
+        let interpreter = Interpreter::new("ws/parse_heap.ws")?;
         let results = vec![
             Instruction {
                 imp: ImpKind::Heap,
@@ -848,8 +860,8 @@ mod tests {
     }
 
     #[test]
-    fn flow() -> Result<(), Box<dyn Error>> {
-        let interpreter = Interpreter::new("ws/flow.ws")?;
+    fn parse_flow() -> Result<(), Box<dyn Error>> {
+        let interpreter = Interpreter::new("ws/parse_flow.ws")?;
         let results = vec![
             Instruction {
                 imp: ImpKind::Flow,
@@ -899,8 +911,8 @@ mod tests {
     }
 
     #[test]
-    fn io() -> Result<(), Box<dyn Error>> {
-        let interpreter = Interpreter::new("ws/io.ws")?;
+    fn parse_io() -> Result<(), Box<dyn Error>> {
+        let interpreter = Interpreter::new("ws/parse_io.ws")?;
         let results = vec![
             Instruction {
                 imp: ImpKind::IO,
@@ -935,5 +947,15 @@ mod tests {
         ];
 
         test_parse(interpreter, results)
+    }
+
+    #[test]
+    fn interpret_stack() -> Result<(), Box<dyn Error>> {
+        let mut interpreter = Interpreter::new("ws/interpret_stack.ws")?;
+        interpreter.run()?;
+
+        dbg!(interpreter.interpreter.stack);
+
+        Ok(())
     }
 }
