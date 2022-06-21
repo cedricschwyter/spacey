@@ -14,6 +14,8 @@ struct Parser {
 }
 
 struct InterpreterContext {
+    stack: Vec<i32>,
+    heap: Vec<i32>,
     labels: Vec<String>,
 }
 
@@ -22,10 +24,29 @@ pub struct Interpreter {
     interpreter: InterpreterContext,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 enum ParseErrorKind {
     InvalidToken(usize, Vec<u8>),
     UnexpectedToken(usize, u8, Vec<u8>),
+}
+
+impl ParseErrorKind {
+    fn throw<T>(self) -> Result<T, Box<dyn Error>> {
+        let msg = match &self {
+            ParseErrorKind::UnexpectedToken(pos, token, tokens) => format!(
+                "unexpected token at position {}, expected one of {:?}, but got {}",
+                pos,
+                tokens.iter().map(|b| *b as char).collect::<Vec<_>>(),
+                *token as char
+            ),
+            ParseErrorKind::InvalidToken(pos, tokens) => format!(
+                "unexpected token at position {}, expected one of {:?}",
+                pos,
+                tokens.iter().map(|b| *b as char).collect::<Vec<_>>(),
+            ),
+        };
+        Err(Box::new(ParseError { msg, kind: self }))
+    }
 }
 
 impl Display for ParseErrorKind {
@@ -44,6 +65,45 @@ struct ParseError {
 impl Error for ParseError {}
 
 impl Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+#[derive(Debug)]
+enum InterpretErrorKind {
+    ParseLogicError(Instruction),
+    StackUnderflow(Instruction),
+    NumericalError(Instruction),
+}
+
+impl Display for InterpretErrorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl InterpretErrorKind {
+    fn throw<T>(self) -> Result<T, Box<dyn Error>> {
+        let msg = match &self {
+            InterpretErrorKind::ParseLogicError(instr) => format!("the parser delivered an inconsistent state, something is severely broken from an application logic point of view. in other words: engineer fucked up. if you receive this error message please make sure to report this as an issue (with the whitespace source) over at https://github.com/d3psi/spacey/issues. thank you. issue occurred when attempting to execute: {:?}", instr),
+            InterpretErrorKind::StackUnderflow(instr) => format!("stack is empty - failed executing: {:?}", instr),
+            InterpretErrorKind::NumericalError(instr) => format!("number is out of bounds for: {:?}", instr),
+        };
+        Err(Box::new(InterpretError { msg, kind: self }))
+    }
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+struct InterpretError {
+    msg: String,
+    kind: InterpretErrorKind,
+}
+
+impl Error for InterpretError {}
+
+impl Display for InterpretError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self)
     }
@@ -113,13 +173,20 @@ pub struct Instruction {
     imp: ImpKind,
     cmd: CommandKind,
     param: Option<ParamKind>,
+    start_index: usize,
 }
 
 impl InterpreterContext {
     fn new() -> InterpreterContext {
+        let stack = vec![];
+        let heap = vec![];
         let labels = vec![];
 
-        InterpreterContext { labels }
+        InterpreterContext {
+            stack,
+            heap,
+            labels,
+        }
     }
 }
 
@@ -134,9 +201,9 @@ impl Interpreter {
         })
     }
 
-    pub fn run(self) -> Result<(), Box<dyn Error>> {
+    pub fn run(mut self) -> Result<(), Box<dyn Error>> {
         for instr in self.parser {
-            dbg!(instr?);
+            self.interpreter.exec(instr?)?;
         }
 
         Ok(())
@@ -150,23 +217,6 @@ impl Parser {
         let index = 0;
 
         Ok(Parser { source, index })
-    }
-
-    fn throw<T>(&self, kind: ParseErrorKind) -> Result<T, Box<dyn Error>> {
-        let msg = match &kind {
-            ParseErrorKind::UnexpectedToken(pos, token, tokens) => format!(
-                "unexpected token at position {}, expected one of {:?}, but got {}",
-                pos,
-                tokens.iter().map(|b| *b as char).collect::<Vec<_>>(),
-                *token as char
-            ),
-            ParseErrorKind::InvalidToken(pos, tokens) => format!(
-                "unexpected token at position {}, expected one of {:?}",
-                pos,
-                tokens.iter().map(|b| *b as char).collect::<Vec<_>>(),
-            ),
-        };
-        Err(Box::new(ParseError { msg, kind }))
     }
 
     fn next(&mut self) -> Option<u8> {
@@ -187,26 +237,31 @@ impl Parser {
                         SPACE => Some(Ok(ImpKind::Arithmetic)),
                         TAB => Some(Ok(ImpKind::Heap)),
                         LINE_FEED => Some(Ok(ImpKind::IO)),
-                        _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
+                        _ => Some(
+                            ParseErrorKind::UnexpectedToken(
+                                self.index,
+                                val,
+                                vec![SPACE, TAB, LINE_FEED],
+                            )
+                            .throw(),
+                        ),
+                    }
+                } else {
+                    Some(
+                        ParseErrorKind::UnexpectedToken(
                             self.index,
                             val,
                             vec![SPACE, TAB, LINE_FEED],
-                        ))),
-                    }
-                } else {
-                    Some(self.throw(ParseErrorKind::UnexpectedToken(
-                        self.index,
-                        val,
-                        vec![SPACE, TAB, LINE_FEED],
-                    )))
+                        )
+                        .throw(),
+                    )
                 }
             }
             LINE_FEED => Some(Ok(ImpKind::Flow)),
-            _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
-                self.index,
-                val,
-                vec![SPACE, TAB, LINE_FEED],
-            ))),
+            _ => Some(
+                ParseErrorKind::UnexpectedToken(self.index, val, vec![SPACE, TAB, LINE_FEED])
+                    .throw(),
+            ),
         }
     }
 
@@ -219,17 +274,17 @@ impl Parser {
                     return match val {
                         SPACE => Some(Ok(CommandKind::CopyNthStack)),
                         LINE_FEED => Some(Ok(CommandKind::SlideNStack)),
-                        _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
-                            self.index,
-                            val,
-                            vec![SPACE, LINE_FEED],
-                        ))),
+                        _ => Some(
+                            ParseErrorKind::UnexpectedToken(
+                                self.index,
+                                val,
+                                vec![SPACE, LINE_FEED],
+                            )
+                            .throw(),
+                        ),
                     };
                 }
-                Some(self.throw(ParseErrorKind::InvalidToken(
-                    self.index,
-                    vec![SPACE, LINE_FEED],
-                )))
+                Some(ParseErrorKind::InvalidToken(self.index, vec![SPACE, LINE_FEED]).throw())
             }
             LINE_FEED => {
                 if let Some(val) = self.next() {
@@ -237,23 +292,22 @@ impl Parser {
                         SPACE => Some(Ok(CommandKind::DuplicateStack)),
                         TAB => Some(Ok(CommandKind::SwapStack)),
                         LINE_FEED => Some(Ok(CommandKind::DiscardStack)),
-                        _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
-                            self.index,
-                            val,
-                            vec![SPACE, TAB, LINE_FEED],
-                        ))),
+                        _ => Some(
+                            ParseErrorKind::UnexpectedToken(
+                                self.index,
+                                val,
+                                vec![SPACE, TAB, LINE_FEED],
+                            )
+                            .throw(),
+                        ),
                     };
                 }
-                Some(self.throw(ParseErrorKind::InvalidToken(
-                    self.index,
-                    vec![SPACE, TAB, LINE_FEED],
-                )))
+                Some(ParseErrorKind::InvalidToken(self.index, vec![SPACE, TAB, LINE_FEED]).throw())
             }
-            _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
-                self.index,
-                val,
-                vec![SPACE, TAB, LINE_FEED],
-            ))),
+            _ => Some(
+                ParseErrorKind::UnexpectedToken(self.index, val, vec![SPACE, TAB, LINE_FEED])
+                    .throw(),
+            ),
         }
     }
 
@@ -266,36 +320,32 @@ impl Parser {
                         SPACE => Some(Ok(CommandKind::Add)),
                         TAB => Some(Ok(CommandKind::Subtract)),
                         LINE_FEED => Some(Ok(CommandKind::Multiply)),
-                        _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
-                            self.index,
-                            val,
-                            vec![SPACE, TAB, LINE_FEED],
-                        ))),
+                        _ => Some(
+                            ParseErrorKind::UnexpectedToken(
+                                self.index,
+                                val,
+                                vec![SPACE, TAB, LINE_FEED],
+                            )
+                            .throw(),
+                        ),
                     };
                 }
 
-                Some(self.throw(ParseErrorKind::InvalidToken(
-                    self.index,
-                    vec![SPACE, TAB, LINE_FEED],
-                )))
+                Some(ParseErrorKind::InvalidToken(self.index, vec![SPACE, TAB, LINE_FEED]).throw())
             }
             TAB => {
                 if let Some(val) = self.next() {
                     return match val {
                         SPACE => Some(Ok(CommandKind::IntegerDivision)),
                         TAB => Some(Ok(CommandKind::Modulo)),
-                        _ => Some(
-                            self.throw(ParseErrorKind::InvalidToken(self.index, vec![SPACE, TAB])),
-                        ),
+                        _ => {
+                            Some(ParseErrorKind::InvalidToken(self.index, vec![SPACE, TAB]).throw())
+                        }
                     };
                 }
-                Some(self.throw(ParseErrorKind::InvalidToken(self.index, vec![SPACE, TAB])))
+                Some(ParseErrorKind::InvalidToken(self.index, vec![SPACE, TAB]).throw())
             }
-            _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
-                self.index,
-                val,
-                vec![SPACE, TAB],
-            ))),
+            _ => Some(ParseErrorKind::UnexpectedToken(self.index, val, vec![SPACE, TAB]).throw()),
         }
     }
 
@@ -304,7 +354,7 @@ impl Parser {
         match val {
             SPACE => Some(Ok(CommandKind::StoreHeap)),
             TAB => Some(Ok(CommandKind::RetrieveHeap)),
-            _ => Some(self.throw(ParseErrorKind::InvalidToken(self.index, vec![SPACE, TAB]))),
+            _ => Some(ParseErrorKind::InvalidToken(self.index, vec![SPACE, TAB]).throw()),
         }
     }
 
@@ -317,18 +367,18 @@ impl Parser {
                         SPACE => Some(Ok(CommandKind::Mark)),
                         TAB => Some(Ok(CommandKind::Call)),
                         LINE_FEED => Some(Ok(CommandKind::Jump)),
-                        _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
-                            self.index,
-                            val,
-                            vec![SPACE, TAB, LINE_FEED],
-                        ))),
+                        _ => Some(
+                            ParseErrorKind::UnexpectedToken(
+                                self.index,
+                                val,
+                                vec![SPACE, TAB, LINE_FEED],
+                            )
+                            .throw(),
+                        ),
                     };
                 }
 
-                Some(self.throw(ParseErrorKind::InvalidToken(
-                    self.index,
-                    vec![SPACE, TAB, LINE_FEED],
-                )))
+                Some(ParseErrorKind::InvalidToken(self.index, vec![SPACE, TAB, LINE_FEED]).throw())
             }
             TAB => {
                 if let Some(val) = self.next() {
@@ -336,42 +386,36 @@ impl Parser {
                         SPACE => Some(Ok(CommandKind::JumpZero)),
                         TAB => Some(Ok(CommandKind::JumpNegative)),
                         LINE_FEED => Some(Ok(CommandKind::Return)),
-                        _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
-                            self.index,
-                            val,
-                            vec![SPACE, TAB, LINE_FEED],
-                        ))),
+                        _ => Some(
+                            ParseErrorKind::UnexpectedToken(
+                                self.index,
+                                val,
+                                vec![SPACE, TAB, LINE_FEED],
+                            )
+                            .throw(),
+                        ),
                     };
                 }
 
-                Some(self.throw(ParseErrorKind::InvalidToken(
-                    self.index,
-                    vec![SPACE, TAB, LINE_FEED],
-                )))
+                Some(ParseErrorKind::InvalidToken(self.index, vec![SPACE, TAB, LINE_FEED]).throw())
             }
             LINE_FEED => {
                 if let Some(val) = self.next() {
                     return match val {
                         LINE_FEED => Some(Ok(CommandKind::Exit)),
-                        _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
-                            self.index,
-                            val,
-                            vec![LINE_FEED],
-                        ))),
+                        _ => Some(
+                            ParseErrorKind::UnexpectedToken(self.index, val, vec![LINE_FEED])
+                                .throw(),
+                        ),
                     };
                 }
 
-                Some(self.throw(ParseErrorKind::UnexpectedToken(
-                    self.index,
-                    val,
-                    vec![LINE_FEED],
-                )))
+                Some(ParseErrorKind::UnexpectedToken(self.index, val, vec![LINE_FEED]).throw())
             }
-            _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
-                self.index,
-                val,
-                vec![SPACE, TAB, LINE_FEED],
-            ))),
+            _ => Some(
+                ParseErrorKind::UnexpectedToken(self.index, val, vec![SPACE, TAB, LINE_FEED])
+                    .throw(),
+            ),
         }
     }
 
@@ -383,44 +427,30 @@ impl Parser {
                     return match val {
                         SPACE => Some(Ok(CommandKind::OutCharacter)),
                         TAB => Some(Ok(CommandKind::OutInteger)),
-                        _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
-                            self.index,
-                            val,
-                            vec![SPACE, TAB],
-                        ))),
+                        _ => Some(
+                            ParseErrorKind::UnexpectedToken(self.index, val, vec![SPACE, TAB])
+                                .throw(),
+                        ),
                     };
                 }
 
-                Some(self.throw(ParseErrorKind::UnexpectedToken(
-                    self.index,
-                    val,
-                    vec![SPACE, TAB],
-                )))
+                Some(ParseErrorKind::UnexpectedToken(self.index, val, vec![SPACE, TAB]).throw())
             }
             TAB => {
                 if let Some(val) = self.next() {
                     return match val {
                         SPACE => Some(Ok(CommandKind::ReadCharacter)),
                         TAB => Some(Ok(CommandKind::ReadInteger)),
-                        _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
-                            self.index,
-                            val,
-                            vec![SPACE, TAB],
-                        ))),
+                        _ => Some(
+                            ParseErrorKind::UnexpectedToken(self.index, val, vec![SPACE, TAB])
+                                .throw(),
+                        ),
                     };
                 }
 
-                Some(self.throw(ParseErrorKind::UnexpectedToken(
-                    self.index,
-                    val,
-                    vec![SPACE, TAB],
-                )))
+                Some(ParseErrorKind::UnexpectedToken(self.index, val, vec![SPACE, TAB]).throw())
             }
-            _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
-                self.index,
-                val,
-                vec![SPACE, TAB],
-            ))),
+            _ => Some(ParseErrorKind::UnexpectedToken(self.index, val, vec![SPACE, TAB]).throw()),
         }
     }
 
@@ -445,11 +475,9 @@ impl Parser {
                     break;
                 }
                 _ => {
-                    failure = Some(self.throw(ParseErrorKind::UnexpectedToken(
-                        self.index,
-                        val,
-                        vec![SPACE, TAB],
-                    )));
+                    failure = Some(
+                        ParseErrorKind::UnexpectedToken(self.index, val, vec![SPACE, TAB]).throw(),
+                    );
                     break;
                 }
             });
@@ -476,11 +504,14 @@ impl Parser {
                 TAB => TAB,
                 LINE_FEED => break,
                 _ => {
-                    failure = Some(self.throw(ParseErrorKind::UnexpectedToken(
-                        self.index,
-                        val,
-                        vec![SPACE, TAB, LINE_FEED],
-                    )));
+                    failure = Some(
+                        ParseErrorKind::UnexpectedToken(
+                            self.index,
+                            val,
+                            vec![SPACE, TAB, LINE_FEED],
+                        )
+                        .throw(),
+                    );
                     break;
                 }
             });
@@ -501,19 +532,19 @@ impl Parser {
                     return match val {
                         SPACE => self.number(1),
                         TAB => self.number(-1),
-                        _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
-                            self.index,
-                            val,
-                            vec![SPACE, TAB],
-                        ))),
+                        _ => Some(
+                            ParseErrorKind::UnexpectedToken(self.index, val, vec![SPACE, TAB])
+                                .throw(),
+                        ),
                     };
                 }
-                Some(self.throw(ParseErrorKind::InvalidToken(self.index, vec![SPACE, TAB])))
+                Some(ParseErrorKind::InvalidToken(self.index, vec![SPACE, TAB]).throw())
             }
         }
     }
 
     fn instruction(&mut self) -> Option<Result<Instruction, Box<dyn Error>>> {
+        let start_index = self.index;
         let imp = self.imp()?;
         if let Ok(imp) = imp {
             let cmd = self.cmd(imp)?;
@@ -528,7 +559,12 @@ impl Parser {
                         return Some(Err(err));
                     }
                 };
-                let instr = Instruction { imp, cmd, param };
+                let instr = Instruction {
+                    imp,
+                    cmd,
+                    param,
+                    start_index,
+                };
 
                 return Some(Ok(instr));
             } else if let Err(err) = cmd {
@@ -559,8 +595,107 @@ impl Iterator for Interpreter {
 }
 
 impl InterpreterContext {
-    pub fn exec(&self, instr: Instruction) -> Result<(), Box<dyn Error>> {
-        todo!("implement execution logic here");
+    fn stack(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
+        match instr.cmd {
+            CommandKind::PushStack => {
+                if let Some(ParamKind::Number(val)) = instr.param {
+                    self.stack.push(val);
+
+                    return Ok(());
+                }
+
+                InterpretErrorKind::ParseLogicError(instr).throw()
+            }
+            CommandKind::DuplicateStack => {
+                if let Some(val) = self.stack.pop() {
+                    self.stack.push(val);
+                    self.stack.push(val);
+
+                    return Ok(());
+                }
+
+                InterpretErrorKind::StackUnderflow(instr).throw()
+            }
+            CommandKind::CopyNthStack => {
+                if let Some(ParamKind::Number(val)) = instr.param {
+                    if val < 0 {
+                        return InterpretErrorKind::NumericalError(instr).throw();
+                    }
+                    let val = val as usize;
+                    self.stack.push(self.stack[val]);
+
+                    return Ok(());
+                }
+
+                InterpretErrorKind::ParseLogicError(instr).throw()
+            }
+            CommandKind::SwapStack => {
+                if let Some(val) = self.stack.pop() {
+                    if let Some(other) = self.stack.pop() {
+                        self.stack.push(val);
+                        self.stack.push(other);
+
+                        return Ok(());
+                    }
+
+                    return InterpretErrorKind::StackUnderflow(instr).throw();
+                }
+                InterpretErrorKind::StackUnderflow(instr).throw()
+            }
+            CommandKind::DiscardStack => {
+                if let Some(_) = self.stack.pop() {
+                    return Ok(());
+                }
+
+                InterpretErrorKind::StackUnderflow(instr).throw()
+            }
+            CommandKind::SlideNStack => {
+                if let Some(top) = self.stack.pop() {
+                    if let Some(ParamKind::Number(val)) = instr.param {
+                        if val < 0 {
+                            return InterpretErrorKind::NumericalError(instr).throw();
+                        }
+                        for _i in 0..val {
+                            self.stack.pop();
+                        }
+                        self.stack.push(top);
+
+                        return Ok(());
+                    }
+
+                    return InterpretErrorKind::ParseLogicError(instr).throw();
+                }
+
+                InterpretErrorKind::StackUnderflow(instr).throw()
+            }
+            _ => InterpretErrorKind::ParseLogicError(instr).throw(),
+        }
+    }
+
+    fn arithmetic(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
+        unimplemented!()
+    }
+
+    fn heap(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
+        unimplemented!()
+    }
+
+    fn flow(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
+        unimplemented!()
+    }
+
+    fn io(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
+        unimplemented!()
+    }
+
+    pub fn exec(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
+        match instr.imp {
+            ImpKind::Stack => self.stack(instr),
+            ImpKind::Arithmetic => self.arithmetic(instr),
+            ImpKind::Heap => self.heap(instr),
+            ImpKind::Flow => self.flow(instr),
+            ImpKind::IO => self.io(instr),
+        }
     }
 }
 
@@ -597,36 +732,43 @@ mod tests {
                 imp: ImpKind::Stack,
                 cmd: CommandKind::PushStack,
                 param: Some(ParamKind::Number(64)),
+                start_index: 0,
             },
             Instruction {
                 imp: ImpKind::Stack,
                 cmd: CommandKind::DuplicateStack,
                 param: None,
+                start_index: 11,
             },
             Instruction {
                 imp: ImpKind::Stack,
                 cmd: CommandKind::CopyNthStack,
                 param: Some(ParamKind::Number(64)),
+                start_index: 14,
             },
             Instruction {
                 imp: ImpKind::Stack,
                 cmd: CommandKind::SwapStack,
                 param: None,
+                start_index: 26,
             },
             Instruction {
                 imp: ImpKind::Stack,
                 cmd: CommandKind::DiscardStack,
                 param: None,
+                start_index: 29,
             },
             Instruction {
                 imp: ImpKind::Stack,
                 cmd: CommandKind::SlideNStack,
                 param: Some(ParamKind::Number(64)),
+                start_index: 32,
             },
             Instruction {
                 imp: ImpKind::Flow,
                 cmd: CommandKind::Exit,
                 param: None,
+                start_index: 44,
             },
         ];
 
@@ -641,31 +783,37 @@ mod tests {
                 imp: ImpKind::Arithmetic,
                 cmd: CommandKind::Add,
                 param: None,
+                start_index: 0,
             },
             Instruction {
                 imp: ImpKind::Arithmetic,
                 cmd: CommandKind::Subtract,
                 param: None,
+                start_index: 4,
             },
             Instruction {
                 imp: ImpKind::Arithmetic,
                 cmd: CommandKind::Multiply,
                 param: None,
+                start_index: 8,
             },
             Instruction {
                 imp: ImpKind::Arithmetic,
                 cmd: CommandKind::IntegerDivision,
                 param: None,
+                start_index: 12,
             },
             Instruction {
                 imp: ImpKind::Arithmetic,
                 cmd: CommandKind::Modulo,
                 param: None,
+                start_index: 16,
             },
             Instruction {
                 imp: ImpKind::Flow,
                 cmd: CommandKind::Exit,
                 param: None,
+                start_index: 20,
             },
         ];
 
@@ -680,16 +828,19 @@ mod tests {
                 imp: ImpKind::Heap,
                 cmd: CommandKind::StoreHeap,
                 param: None,
+                start_index: 0,
             },
             Instruction {
                 imp: ImpKind::Heap,
                 cmd: CommandKind::RetrieveHeap,
                 param: None,
+                start_index: 3,
             },
             Instruction {
                 imp: ImpKind::Flow,
                 cmd: CommandKind::Exit,
                 param: None,
+                start_index: 6,
             },
         ];
 
@@ -704,36 +855,43 @@ mod tests {
                 imp: ImpKind::Flow,
                 cmd: CommandKind::Mark,
                 param: Some(ParamKind::Label(" \t \t \t".to_string())),
+                start_index: 0,
             },
             Instruction {
                 imp: ImpKind::Flow,
                 cmd: CommandKind::Call,
                 param: Some(ParamKind::Label(" \t \t \t".to_string())),
+                start_index: 10,
             },
             Instruction {
                 imp: ImpKind::Flow,
                 cmd: CommandKind::Jump,
                 param: Some(ParamKind::Label(" \t \t \t".to_string())),
+                start_index: 20,
             },
             Instruction {
                 imp: ImpKind::Flow,
                 cmd: CommandKind::JumpZero,
                 param: Some(ParamKind::Label(" \t \t \t".to_string())),
+                start_index: 30,
             },
             Instruction {
                 imp: ImpKind::Flow,
                 cmd: CommandKind::JumpNegative,
                 param: Some(ParamKind::Label(" \t \t \t".to_string())),
+                start_index: 40,
             },
             Instruction {
                 imp: ImpKind::Flow,
                 cmd: CommandKind::Return,
                 param: None,
+                start_index: 50,
             },
             Instruction {
                 imp: ImpKind::Flow,
                 cmd: CommandKind::Exit,
                 param: None,
+                start_index: 53,
             },
         ];
 
@@ -748,26 +906,31 @@ mod tests {
                 imp: ImpKind::IO,
                 cmd: CommandKind::OutCharacter,
                 param: None,
+                start_index: 0,
             },
             Instruction {
                 imp: ImpKind::IO,
                 cmd: CommandKind::OutInteger,
                 param: None,
+                start_index: 4,
             },
             Instruction {
                 imp: ImpKind::IO,
                 cmd: CommandKind::ReadCharacter,
                 param: None,
+                start_index: 8,
             },
             Instruction {
                 imp: ImpKind::IO,
                 cmd: CommandKind::ReadInteger,
                 param: None,
+                start_index: 12,
             },
             Instruction {
                 imp: ImpKind::Flow,
                 cmd: CommandKind::Exit,
                 param: None,
+                start_index: 16,
             },
         ];
 
