@@ -589,7 +589,20 @@ impl Iterator for &mut Parser {
     type Item = Result<Instruction, Box<dyn Error>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.instruction()
+        let instr = self.instruction();
+        if let Some(instr) = instr {
+            if let Ok(val) = &instr {
+                self.last = Some(Ok(val.clone()))
+            }
+            return Some(instr);
+        }
+        if let Some(Ok(instr)) = &self.last {
+            if instr.cmd != CommandKind::Exit {
+                return Some(InterpretErrorKind::NoTermination(instr.clone()).throw());
+            }
+        }
+
+        None
     }
 }
 
@@ -597,20 +610,7 @@ impl Iterator for Interpreter {
     type Item = Result<Instruction, Box<dyn Error>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let instr = self.parser.instruction();
-        if let Some(instr) = instr {
-            if let Ok(val) = &instr {
-                self.parser.last = Some(Ok(val.clone()))
-            }
-            return Some(instr);
-        }
-        if let Some(Ok(instr)) = &self.parser.last {
-            if instr.cmd != CommandKind::Exit {
-                return Some(InterpretErrorKind::NoTermination(instr.clone()).throw());
-            }
-        }
-
-        None
+        self.parser.instruction()
     }
 }
 
