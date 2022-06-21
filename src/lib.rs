@@ -178,89 +178,83 @@ impl Parser {
     }
 
     fn imp(&mut self) -> Option<Result<ImpKind, Box<dyn Error>>> {
-        if let Some(val) = self.next() {
-            return match val {
-                SPACE => Some(Ok(ImpKind::Stack)),
-                TAB => {
-                    if let Some(val) = self.next() {
-                        match val {
-                            SPACE => Some(Ok(ImpKind::Arithmetic)),
-                            TAB => Some(Ok(ImpKind::Heap)),
-                            LINE_FEED => Some(Ok(ImpKind::IO)),
-                            _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
-                                self.index,
-                                val,
-                                vec![SPACE, TAB, LINE_FEED],
-                            ))),
-                        }
-                    } else {
-                        Some(self.throw(ParseErrorKind::UnexpectedToken(
+        let val = self.next()?;
+        match val {
+            SPACE => Some(Ok(ImpKind::Stack)),
+            TAB => {
+                if let Some(val) = self.next() {
+                    match val {
+                        SPACE => Some(Ok(ImpKind::Arithmetic)),
+                        TAB => Some(Ok(ImpKind::Heap)),
+                        LINE_FEED => Some(Ok(ImpKind::IO)),
+                        _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
                             self.index,
                             val,
                             vec![SPACE, TAB, LINE_FEED],
-                        )))
+                        ))),
                     }
-                }
-                LINE_FEED => Some(Ok(ImpKind::Flow)),
-                _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
-                    self.index,
-                    val,
-                    vec![SPACE, TAB, LINE_FEED],
-                ))),
-            };
-        }
-
-        None
-    }
-
-    fn stack(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
-        if let Some(val) = self.next() {
-            return match val {
-                SPACE => Some(Ok(CommandKind::PushStack)),
-                TAB => {
-                    if let Some(val) = self.next() {
-                        return match val {
-                            SPACE => Some(Ok(CommandKind::CopyNthStack)),
-                            LINE_FEED => Some(Ok(CommandKind::SlideNStack)),
-                            _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
-                                self.index,
-                                val,
-                                vec![SPACE, LINE_FEED],
-                            ))),
-                        };
-                    }
-                    Some(self.throw(ParseErrorKind::InvalidToken(
+                } else {
+                    Some(self.throw(ParseErrorKind::UnexpectedToken(
                         self.index,
-                        vec![SPACE, LINE_FEED],
-                    )))
-                }
-                LINE_FEED => {
-                    if let Some(val) = self.next() {
-                        return match val {
-                            SPACE => Some(Ok(CommandKind::DuplicateStack)),
-                            TAB => Some(Ok(CommandKind::SwapStack)),
-                            LINE_FEED => Some(Ok(CommandKind::DiscardStack)),
-                            _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
-                                self.index,
-                                val,
-                                vec![SPACE, TAB, LINE_FEED],
-                            ))),
-                        };
-                    }
-                    Some(self.throw(ParseErrorKind::InvalidToken(
-                        self.index,
+                        val,
                         vec![SPACE, TAB, LINE_FEED],
                     )))
                 }
-                _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
-                    self.index,
-                    val,
-                    vec![SPACE, TAB, LINE_FEED],
-                ))),
-            };
+            }
+            LINE_FEED => Some(Ok(ImpKind::Flow)),
+            _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
+                self.index,
+                val,
+                vec![SPACE, TAB, LINE_FEED],
+            ))),
         }
+    }
 
-        None
+    fn stack(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
+        let val = self.next()?;
+        match val {
+            SPACE => Some(Ok(CommandKind::PushStack)),
+            TAB => {
+                if let Some(val) = self.next() {
+                    return match val {
+                        SPACE => Some(Ok(CommandKind::CopyNthStack)),
+                        LINE_FEED => Some(Ok(CommandKind::SlideNStack)),
+                        _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
+                            self.index,
+                            val,
+                            vec![SPACE, LINE_FEED],
+                        ))),
+                    };
+                }
+                Some(self.throw(ParseErrorKind::InvalidToken(
+                    self.index,
+                    vec![SPACE, LINE_FEED],
+                )))
+            }
+            LINE_FEED => {
+                if let Some(val) = self.next() {
+                    return match val {
+                        SPACE => Some(Ok(CommandKind::DuplicateStack)),
+                        TAB => Some(Ok(CommandKind::SwapStack)),
+                        LINE_FEED => Some(Ok(CommandKind::DiscardStack)),
+                        _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
+                            self.index,
+                            val,
+                            vec![SPACE, TAB, LINE_FEED],
+                        ))),
+                    };
+                }
+                Some(self.throw(ParseErrorKind::InvalidToken(
+                    self.index,
+                    vec![SPACE, TAB, LINE_FEED],
+                )))
+            }
+            _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
+                self.index,
+                val,
+                vec![SPACE, TAB, LINE_FEED],
+            ))),
+        }
     }
 
     fn arithmetic(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
@@ -268,34 +262,28 @@ impl Parser {
     }
 
     fn heap(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
-        if let Some(val) = self.next() {
-            return match val {
-                SPACE => Some(Ok(CommandKind::StoreHeap)),
-                TAB => Some(Ok(CommandKind::RetrieveHeap)),
-                _ => Some(self.throw(ParseErrorKind::InvalidToken(self.index, vec![SPACE, TAB]))),
-            };
+        let val = self.next()?;
+        match val {
+            SPACE => Some(Ok(CommandKind::StoreHeap)),
+            TAB => Some(Ok(CommandKind::RetrieveHeap)),
+            _ => Some(self.throw(ParseErrorKind::InvalidToken(self.index, vec![SPACE, TAB]))),
         }
-
-        None
     }
 
     fn flow(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
-        if let Some(val) = self.next() {
-            match val {
-                LINE_FEED => {
-                    if let Some(val) = self.next() {
-                        return match val {
-                            LINE_FEED => Some(Ok(CommandKind::Exit)),
-                            _ => unimplemented!(),
-                        };
-                    }
-                    unimplemented!()
+        let val = self.next()?;
+        match val {
+            LINE_FEED => {
+                if let Some(val) = self.next() {
+                    return match val {
+                        LINE_FEED => Some(Ok(CommandKind::Exit)),
+                        _ => unimplemented!(),
+                    };
                 }
-                _ => unimplemented!(),
+                unimplemented!()
             }
+            _ => unimplemented!(),
         }
-
-        None
     }
 
     fn io(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
