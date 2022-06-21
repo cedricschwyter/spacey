@@ -258,7 +258,45 @@ impl Parser {
     }
 
     fn arithmetic(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
-        unimplemented!()
+        let val = self.next()?;
+        match val {
+            SPACE => {
+                if let Some(val) = self.next() {
+                    return match val {
+                        SPACE => Some(Ok(CommandKind::Add)),
+                        TAB => Some(Ok(CommandKind::Subtract)),
+                        LINE_FEED => Some(Ok(CommandKind::Multiply)),
+                        _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
+                            self.index,
+                            val,
+                            vec![SPACE, TAB, LINE_FEED],
+                        ))),
+                    };
+                }
+
+                Some(self.throw(ParseErrorKind::InvalidToken(
+                    self.index,
+                    vec![SPACE, TAB, LINE_FEED],
+                )))
+            }
+            TAB => {
+                if let Some(val) = self.next() {
+                    return match val {
+                        SPACE => Some(Ok(CommandKind::IntegerDivision)),
+                        TAB => Some(Ok(CommandKind::Modulo)),
+                        _ => Some(
+                            self.throw(ParseErrorKind::InvalidToken(self.index, vec![SPACE, TAB])),
+                        ),
+                    };
+                }
+                Some(self.throw(ParseErrorKind::InvalidToken(self.index, vec![SPACE, TAB])))
+            }
+            _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
+                self.index,
+                val,
+                vec![SPACE, TAB],
+            ))),
+        }
     }
 
     fn heap(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
@@ -462,6 +500,45 @@ mod tests {
                 imp: ImpKind::Stack,
                 cmd: CommandKind::SlideNStack,
                 param: Some(ParamKind::Number(64)),
+            },
+            Instruction {
+                imp: ImpKind::Flow,
+                cmd: CommandKind::Exit,
+                param: None,
+            },
+        ];
+
+        test_parse(interpreter, results)
+    }
+
+    #[test]
+    fn arithmetic() -> Result<(), Box<dyn Error>> {
+        let interpreter = Interpreter::new("ws/arithmetic.ws")?;
+        let results = vec![
+            Instruction {
+                imp: ImpKind::Arithmetic,
+                cmd: CommandKind::Add,
+                param: None,
+            },
+            Instruction {
+                imp: ImpKind::Arithmetic,
+                cmd: CommandKind::Subtract,
+                param: None,
+            },
+            Instruction {
+                imp: ImpKind::Arithmetic,
+                cmd: CommandKind::Multiply,
+                param: None,
+            },
+            Instruction {
+                imp: ImpKind::Arithmetic,
+                cmd: CommandKind::IntegerDivision,
+                param: None,
+            },
+            Instruction {
+                imp: ImpKind::Arithmetic,
+                cmd: CommandKind::Modulo,
+                param: None,
             },
             Instruction {
                 imp: ImpKind::Flow,
