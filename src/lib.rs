@@ -1,3 +1,5 @@
+#![feature(test)]
+
 use memmap::Mmap;
 use std::error::Error;
 use std::fmt::Display;
@@ -879,6 +881,10 @@ mod tests {
     use super::{CommandKind, ImpKind, Instruction, Interpreter};
     use std::error::Error;
 
+    extern crate test;
+
+    use test::Bencher;
+
     fn test_parse(
         interpreter: Interpreter,
         results: Vec<Instruction>,
@@ -1154,5 +1160,14 @@ mod tests {
         interpreter.run()?;
 
         Ok(())
+    }
+
+    #[bench]
+    fn bench_interpret(b: &mut Bencher) {
+        b.iter(|| -> Result<(), Box<dyn Error>> {
+            let mut interpreter = Interpreter::new("ws/interpret_io.ws", 0)?;
+            interpreter.run()?;
+            Ok(())
+        });
     }
 }
