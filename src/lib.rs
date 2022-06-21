@@ -325,7 +325,52 @@ impl Parser {
     }
 
     fn io(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
-        unimplemented!()
+        let val = self.next()?;
+        match val {
+            SPACE => {
+                if let Some(val) = self.next() {
+                    return match val {
+                        SPACE => Some(Ok(CommandKind::OutCharacter)),
+                        TAB => Some(Ok(CommandKind::OutInteger)),
+                        _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
+                            self.index,
+                            val,
+                            vec![SPACE, TAB],
+                        ))),
+                    };
+                }
+
+                Some(self.throw(ParseErrorKind::UnexpectedToken(
+                    self.index,
+                    val,
+                    vec![SPACE, TAB],
+                )))
+            }
+            TAB => {
+                if let Some(val) = self.next() {
+                    return match val {
+                        SPACE => Some(Ok(CommandKind::ReadCharacter)),
+                        TAB => Some(Ok(CommandKind::ReadInteger)),
+                        _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
+                            self.index,
+                            val,
+                            vec![SPACE, TAB],
+                        ))),
+                    };
+                }
+
+                Some(self.throw(ParseErrorKind::UnexpectedToken(
+                    self.index,
+                    val,
+                    vec![SPACE, TAB],
+                )))
+            }
+            _ => Some(self.throw(ParseErrorKind::UnexpectedToken(
+                self.index,
+                val,
+                vec![SPACE, TAB],
+            ))),
+        }
     }
 
     fn cmd(&mut self, imp: ImpKind) -> Option<Result<CommandKind, Box<dyn Error>>> {
@@ -562,6 +607,40 @@ mod tests {
             Instruction {
                 imp: ImpKind::Heap,
                 cmd: CommandKind::RetrieveHeap,
+                param: None,
+            },
+            Instruction {
+                imp: ImpKind::Flow,
+                cmd: CommandKind::Exit,
+                param: None,
+            },
+        ];
+
+        test_parse(interpreter, results)
+    }
+
+    #[test]
+    fn io() -> Result<(), Box<dyn Error>> {
+        let interpreter = Interpreter::new("ws/io.ws")?;
+        let results = vec![
+            Instruction {
+                imp: ImpKind::IO,
+                cmd: CommandKind::OutCharacter,
+                param: None,
+            },
+            Instruction {
+                imp: ImpKind::IO,
+                cmd: CommandKind::OutInteger,
+                param: None,
+            },
+            Instruction {
+                imp: ImpKind::IO,
+                cmd: CommandKind::ReadCharacter,
+                param: None,
+            },
+            Instruction {
+                imp: ImpKind::IO,
+                cmd: CommandKind::ReadInteger,
                 param: None,
             },
             Instruction {
