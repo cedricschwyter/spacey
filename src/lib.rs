@@ -180,9 +180,9 @@ pub struct Instruction {
 }
 
 impl InterpreterContext {
-    fn new() -> InterpreterContext {
+    fn new(heap_size: usize) -> InterpreterContext {
         let stack = vec![];
-        let heap = vec![];
+        let heap = vec![0; heap_size];
         let labels = vec![];
 
         InterpreterContext {
@@ -194,9 +194,9 @@ impl InterpreterContext {
 }
 
 impl Interpreter {
-    pub fn new(file_name: &str) -> Result<Interpreter, Box<dyn Error>> {
+    pub fn new(file_name: &str, heap_size: usize) -> Result<Interpreter, Box<dyn Error>> {
         let parser = Parser::new(file_name)?;
-        let interpreter = InterpreterContext::new();
+        let interpreter = InterpreterContext::new(heap_size);
 
         Ok(Interpreter {
             parser,
@@ -638,7 +638,7 @@ impl InterpreterContext {
             }
             CommandKind::CopyNthStack => {
                 if let Some(ParamKind::Number(val)) = instr.param {
-                    if val < 0 || val as usize > self.stack.len() - 1 {
+                    if val < 0 || val as usize >= self.stack.len() {
                         return InterpretErrorKind::NumberOutOfBoundsError(
                             instr,
                             val,
@@ -767,6 +767,46 @@ impl InterpreterContext {
 
     fn heap(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
         match instr.cmd {
+            CommandKind::StoreHeap => {
+                if let Some(val) = self.stack.pop() {
+                    if let Some(addr) = self.stack.pop() {
+                        if addr < 0 || addr as usize >= self.heap.len() {
+                            return InterpretErrorKind::NumberOutOfBoundsError(
+                                instr,
+                                addr,
+                                0,
+                                self.heap.len() as i32 - 1,
+                            )
+                            .throw();
+                        }
+
+                        self.heap[addr as usize] = val;
+
+                        return Ok(());
+                    }
+                }
+
+                InterpretErrorKind::StackUnderflow(instr).throw()
+            }
+            CommandKind::RetrieveHeap => {
+                if let Some(addr) = self.stack.pop() {
+                    if addr < 0 || addr as usize >= self.heap.len() {
+                        return InterpretErrorKind::NumberOutOfBoundsError(
+                            instr,
+                            addr,
+                            0,
+                            self.heap.len() as i32 - 1,
+                        )
+                        .throw();
+                    }
+
+                    self.stack.push(self.heap[addr as usize]);
+
+                    return Ok(());
+                }
+
+                InterpretErrorKind::StackUnderflow(instr).throw()
+            }
             _ => InterpretErrorKind::ParseLogicError(instr).throw(),
         }
     }
@@ -797,6 +837,8 @@ impl InterpreterContext {
 
 #[cfg(test)]
 mod tests {
+    use clap::Result;
+
     use crate::ParamKind;
 
     use super::{CommandKind, ImpKind, Instruction, Interpreter};
@@ -822,7 +864,7 @@ mod tests {
 
     #[test]
     fn parse_stack() -> Result<(), Box<dyn Error>> {
-        let interpreter = Interpreter::new("ws/parse_stack.ws")?;
+        let interpreter = Interpreter::new("ws/parse_stack.ws", 0)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::Stack,
@@ -873,7 +915,7 @@ mod tests {
 
     #[test]
     fn parse_arithmetic() -> Result<(), Box<dyn Error>> {
-        let interpreter = Interpreter::new("ws/parse_arithmetic.ws")?;
+        let interpreter = Interpreter::new("ws/parse_arithmetic.ws", 0)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::Arithmetic,
@@ -918,7 +960,7 @@ mod tests {
 
     #[test]
     fn parse_heap() -> Result<(), Box<dyn Error>> {
-        let interpreter = Interpreter::new("ws/parse_heap.ws")?;
+        let interpreter = Interpreter::new("ws/parse_heap.ws", 0)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::Heap,
@@ -945,7 +987,7 @@ mod tests {
 
     #[test]
     fn parse_flow() -> Result<(), Box<dyn Error>> {
-        let interpreter = Interpreter::new("ws/parse_flow.ws")?;
+        let interpreter = Interpreter::new("ws/parse_flow.ws", 0)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::Flow,
@@ -996,7 +1038,7 @@ mod tests {
 
     #[test]
     fn parse_io() -> Result<(), Box<dyn Error>> {
-        let interpreter = Interpreter::new("ws/parse_io.ws")?;
+        let interpreter = Interpreter::new("ws/parse_io.ws", 0)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::IO,
@@ -1035,7 +1077,7 @@ mod tests {
 
     #[test]
     fn interpret_stack() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/interpret_stack.ws")?;
+        let mut interpreter = Interpreter::new("ws/interpret_stack.ws", 0)?;
 
         interpreter.run()?;
 
@@ -1048,13 +1090,24 @@ mod tests {
 
     #[test]
     fn interpret_arithmetic() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/interpret_arithmetic.ws")?;
+        let mut interpreter = Interpreter::new("ws/interpret_arithmetic.ws", 0)?;
 
         interpreter.run()?;
 
         assert_eq!(interpreter.interpreter.stack, vec![3]);
         assert!(interpreter.interpreter.heap.is_empty());
         assert!(interpreter.interpreter.labels.is_empty());
+
+        Ok(())
+    }
+
+    #[test]
+    fn interpret_heap() -> Result<(), Box<dyn Error>> {
+        let mut interpreter = Interpreter::new("ws/interpret_heap.ws", 1)?;
+
+        interpreter.run()?;
+
+        assert_eq!(interpreter.interpreter.stack, vec![-8, 10]);
 
         Ok(())
     }
