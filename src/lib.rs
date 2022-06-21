@@ -210,10 +210,7 @@ impl Parser {
             };
         }
 
-        Some(self.throw(ParseErrorKind::InvalidToken(
-            self.index,
-            vec![SPACE, TAB, LINE_FEED],
-        )))
+        None
     }
 
     fn stack(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
@@ -263,10 +260,7 @@ impl Parser {
             };
         }
 
-        Some(self.throw(ParseErrorKind::InvalidToken(
-            self.index,
-            vec![SPACE, TAB, LINE_FEED],
-        )))
+        None
     }
 
     fn arithmetic(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
@@ -274,11 +268,34 @@ impl Parser {
     }
 
     fn heap(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
-        unimplemented!()
+        if let Some(val) = self.next() {
+            return match val {
+                SPACE => Some(Ok(CommandKind::StoreHeap)),
+                TAB => Some(Ok(CommandKind::RetrieveHeap)),
+                _ => Some(self.throw(ParseErrorKind::InvalidToken(self.index, vec![SPACE, TAB]))),
+            };
+        }
+
+        None
     }
 
     fn flow(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
-        unimplemented!()
+        if let Some(val) = self.next() {
+            match val {
+                LINE_FEED => {
+                    if let Some(val) = self.next() {
+                        return match val {
+                            LINE_FEED => Some(Ok(CommandKind::Exit)),
+                            _ => unimplemented!(),
+                        };
+                    }
+                    unimplemented!()
+                }
+                _ => unimplemented!(),
+            }
+        }
+
+        None
     }
 
     fn io(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
@@ -406,6 +423,24 @@ mod tests {
     use super::{CommandKind, ImpKind, Instruction, Interpreter};
     use std::error::Error;
 
+    fn test_parse(
+        interpreter: Interpreter,
+        results: Vec<Instruction>,
+    ) -> Result<(), Box<dyn Error>> {
+        for (i, instr) in interpreter.enumerate() {
+            if i == results.len() {
+                break;
+            }
+            if let Ok(instr) = instr {
+                assert_eq!(instr, results[i]);
+            } else if let Err(err) = instr {
+                return Err(err);
+            }
+        }
+
+        Ok(())
+    }
+
     #[test]
     fn stack() -> Result<(), Box<dyn Error>> {
         let interpreter = Interpreter::new("ws/stack.ws")?;
@@ -440,16 +475,37 @@ mod tests {
                 cmd: CommandKind::SlideNStack,
                 param: Some(ParamKind::Number(64)),
             },
+            Instruction {
+                imp: ImpKind::Flow,
+                cmd: CommandKind::Exit,
+                param: None,
+            },
         ];
-        for (i, instr) in interpreter.enumerate() {
-            if i == results.len() {
-                break;
-            }
-            if let Ok(instr) = instr {
-                assert_eq!(instr, results[i]);
-            }
-        }
 
-        Ok(())
+        test_parse(interpreter, results)
+    }
+
+    #[test]
+    fn heap() -> Result<(), Box<dyn Error>> {
+        let interpreter = Interpreter::new("ws/heap.ws")?;
+        let results = vec![
+            Instruction {
+                imp: ImpKind::Heap,
+                cmd: CommandKind::StoreHeap,
+                param: None,
+            },
+            Instruction {
+                imp: ImpKind::Heap,
+                cmd: CommandKind::RetrieveHeap,
+                param: None,
+            },
+            Instruction {
+                imp: ImpKind::Flow,
+                cmd: CommandKind::Exit,
+                param: None,
+            },
+        ];
+
+        test_parse(interpreter, results)
     }
 }
