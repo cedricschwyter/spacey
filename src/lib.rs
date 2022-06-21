@@ -820,6 +820,41 @@ impl InterpreterContext {
 
     fn io(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
         match instr.cmd {
+            CommandKind::OutCharacter => {
+                if let Some(character) = self.stack.pop() {
+                    if character < 0 {
+                        return InterpretErrorKind::NumberOutOfBoundsError(
+                            instr,
+                            character,
+                            0,
+                            i32::MAX,
+                        )
+                        .throw();
+                    }
+                    if let Some(character) = char::from_u32(character as u32) {
+                        print!("{}", character);
+
+                        return Ok(());
+                    }
+                }
+
+                InterpretErrorKind::StackUnderflow(instr).throw()
+            }
+            CommandKind::OutInteger => {
+                if let Some(number) = self.stack.pop() {
+                    print!("{}", number);
+
+                    return Ok(());
+                }
+
+                InterpretErrorKind::StackUnderflow(instr).throw()
+            }
+            CommandKind::ReadCharacter => {
+                unimplemented!()
+            }
+            CommandKind::ReadInteger => {
+                unimplemented!()
+            }
             _ => InterpretErrorKind::ParseLogicError(instr).throw(),
         }
     }
@@ -1108,6 +1143,15 @@ mod tests {
         interpreter.run()?;
 
         assert_eq!(interpreter.interpreter.stack, vec![-8, 10]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn interpret_io() -> Result<(), Box<dyn Error>> {
+        let mut interpreter = Interpreter::new("ws/interpret_io.ws", 0)?;
+
+        interpreter.run()?;
 
         Ok(())
     }
