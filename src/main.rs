@@ -15,13 +15,25 @@ fn args() -> ArgMatches {
                 .required(true)
                 .help("whitespace source file to interpret"),
         )
+        .arg(
+            Arg::new("heap-size")
+                .short('s')
+                .long("heap-size")
+                .takes_value(true)
+                .required(false)
+                .help("the size of the heap address space (each heap address stores one i32)"),
+        )
         .get_matches()
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = args();
     let file_name = args.value_of("file").unwrap();
-    let interpreter = Interpreter::new(file_name)?;
+    let heap_size = match args.value_of("heap-size") {
+        Some(size) => size.parse()?,
+        None => 524288,
+    };
+    let mut interpreter = Interpreter::new(file_name, heap_size)?;
 
     interpreter.run()?;
 
