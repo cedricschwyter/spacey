@@ -11,6 +11,7 @@ const LINE_FEED: u8 = b'\n';
 struct Parser {
     source: Mmap,
     index: usize,
+    last: Option<Result<Instruction, Box<dyn Error>>>,
 }
 
 struct InterpreterContext {
@@ -75,6 +76,7 @@ enum InterpretErrorKind {
     ParseLogicError(Instruction),
     StackUnderflow(Instruction),
     NumberOutOfBoundsError(Instruction, i32, i32, i32),
+    NoTermination(Instruction),
 }
 
 impl Display for InterpretErrorKind {
@@ -86,9 +88,10 @@ impl Display for InterpretErrorKind {
 impl InterpretErrorKind {
     fn throw<T>(self) -> Result<T, Box<dyn Error>> {
         let msg = match &self {
-            InterpretErrorKind::ParseLogicError(instr) => format!("the parser delivered an inconsistent state, something is severely broken from an application logic point of view. in other words: engineer fucked up. if you receive this error message please make sure to report this as an issue (with the whitespace source) over at https://github.com/d3psi/spacey/issues. thank you. issue occurred when attempting to execute: {:?}", instr),
+            InterpretErrorKind::ParseLogicError(instr) => format!("the parser delivered an inconsistent state, something is severely broken from an application logic point of view. in other words: engineer fucked up. if you receive this error message please make sure to report this as an issue (please also supply the whitespace source) over at https://github.com/d3psi/spacey/issues. thank you. issue occurred when attempting to execute: {:?}", instr),
             InterpretErrorKind::StackUnderflow(instr) => format!("stack is empty - failed executing: {:?}", instr),
             InterpretErrorKind::NumberOutOfBoundsError(instr, num, low, high) => format!("number is out of bounds for: {:?}, expected in the closed interval bounded by {} and {}, but was {}", instr, low, high, num),
+            InterpretErrorKind::NoTermination(instr) => format!("no termination instruction after last executed instruction: {:?}", instr)
         };
         Err(Box::new(InterpretError { msg, kind: self }))
     }
@@ -162,13 +165,13 @@ impl CommandKind {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 enum ParamKind {
     Number(i32),
     Label(String),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Instruction {
     imp: ImpKind,
     cmd: CommandKind,
@@ -216,7 +219,11 @@ impl Parser {
         let source = unsafe { Mmap::map(&file)? };
         let index = 0;
 
-        Ok(Parser { source, index })
+        Ok(Parser {
+            source,
+            index,
+            last: None,
+        })
     }
 
     fn next(&mut self) -> Option<u8> {
@@ -590,7 +597,20 @@ impl Iterator for Interpreter {
     type Item = Result<Instruction, Box<dyn Error>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.parser.instruction()
+        let instr = self.parser.instruction();
+        if let Some(instr) = instr {
+            if let Ok(val) = &instr {
+                self.parser.last = Some(Ok(val.clone()))
+            }
+            return Some(instr);
+        }
+        if let Some(Ok(instr)) = &self.parser.last {
+            if instr.cmd != CommandKind::Exit {
+                return Some(InterpretErrorKind::NoTermination(instr.clone()).throw());
+            }
+        }
+
+        None
     }
 }
 
@@ -954,7 +974,7 @@ mod tests {
         let mut interpreter = Interpreter::new("ws/interpret_stack.ws")?;
         interpreter.run()?;
 
-        dbg!(interpreter.interpreter.stack);
+        assert_eq!(interpreter.interpreter.stack, vec![-1]);
 
         Ok(())
     }
