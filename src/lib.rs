@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
 use std::fs::File;
+use std::ops::Index;
 use std::rc::Rc;
 
 const SPACE: u8 = b' ';
@@ -19,8 +20,43 @@ struct Parser {
     last: Option<Result<Instruction, Box<dyn Error>>>,
 }
 
-struct InterpreterContext {
+#[derive(Debug)]
+struct StackFrame {
+    caller_index: usize,
     stack: Vec<i32>,
+}
+
+impl StackFrame {
+    fn new(caller_index: usize) -> StackFrame {
+        StackFrame {
+            caller_index,
+            stack: vec![],
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.stack.len()
+    }
+
+    fn push(&mut self, val: i32) {
+        self.stack.push(val);
+    }
+
+    fn pop(&mut self) -> Option<i32> {
+        self.stack.pop()
+    }
+}
+
+impl Index<usize> for StackFrame {
+    type Output = i32;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.stack[index]
+    }
+}
+
+struct InterpreterContext {
+    stack: Vec<StackFrame>,
     heap: Vec<i32>,
     labels: HashMap<String, usize>,
     parser: Rc<RefCell<Parser>>,
@@ -189,7 +225,7 @@ pub struct Instruction {
 
 impl InterpreterContext {
     fn new(heap_size: usize, parser: Rc<RefCell<Parser>>) -> InterpreterContext {
-        let stack = vec![];
+        let stack = vec![StackFrame::new(0)];
         let heap = vec![0; heap_size];
         let labels = HashMap::new();
 
@@ -628,7 +664,8 @@ impl InterpreterContext {
         match instr.cmd {
             CommandKind::PushStack => {
                 if let Some(ParamKind::Number(val)) = instr.param {
-                    self.stack.push(val);
+                    let length = self.stack.len();
+                    self.stack[length - 1].push(val);
 
                     return Ok(());
                 }
@@ -636,9 +673,10 @@ impl InterpreterContext {
                 InterpretErrorKind::ParseLogicError(instr).throw()
             }
             CommandKind::DuplicateStack => {
-                if let Some(val) = self.stack.pop() {
-                    self.stack.push(val);
-                    self.stack.push(val);
+                let length = self.stack.len();
+                if let Some(val) = self.stack[length - 1].pop() {
+                    self.stack[length - 1].push(val);
+                    self.stack[length - 1].push(val);
 
                     return Ok(());
                 }
@@ -646,18 +684,20 @@ impl InterpreterContext {
                 InterpretErrorKind::StackUnderflow(instr).throw()
             }
             CommandKind::CopyNthStack => {
-                if let Some(ParamKind::Number(val)) = instr.param {
-                    if val < 0 || val as usize >= self.stack.len() {
+                let length = self.stack.len();
+                if let Some(ParamKind::Number(addr)) = instr.param {
+                    if addr < 0 || addr as usize >= self.stack[length - 1].len() {
                         return InterpretErrorKind::NumberOutOfBoundsError(
                             instr,
-                            val,
+                            addr,
                             0,
-                            self.stack.len() as i32 - 1,
+                            self.stack[length - 1].len() as i32 - 1,
                         )
                         .throw();
                     }
-                    let val = val as usize;
-                    self.stack.push(self.stack[val]);
+                    let addr = addr as usize;
+                    let val = self.stack[length - 1][addr];
+                    self.stack[length - 1].push(val);
 
                     return Ok(());
                 }
@@ -665,10 +705,11 @@ impl InterpreterContext {
                 InterpretErrorKind::ParseLogicError(instr).throw()
             }
             CommandKind::SwapStack => {
-                if let Some(val) = self.stack.pop() {
-                    if let Some(other) = self.stack.pop() {
-                        self.stack.push(val);
-                        self.stack.push(other);
+                let length = self.stack.len();
+                if let Some(val) = self.stack[length - 1].pop() {
+                    if let Some(other) = self.stack[length - 1].pop() {
+                        self.stack[length - 1].push(val);
+                        self.stack[length - 1].push(other);
 
                         return Ok(());
                     }
@@ -678,14 +719,16 @@ impl InterpreterContext {
                 InterpretErrorKind::StackUnderflow(instr).throw()
             }
             CommandKind::DiscardStack => {
-                if let Some(_) = self.stack.pop() {
+                let length = self.stack.len();
+                if let Some(_) = self.stack[length - 1].pop() {
                     return Ok(());
                 }
 
                 InterpretErrorKind::StackUnderflow(instr).throw()
             }
             CommandKind::SlideNStack => {
-                if let Some(top) = self.stack.pop() {
+                let length = self.stack.len();
+                if let Some(top) = self.stack[length - 1].pop() {
                     if let Some(ParamKind::Number(val)) = instr.param {
                         if val < 0 {
                             return InterpretErrorKind::NumberOutOfBoundsError(
@@ -697,9 +740,9 @@ impl InterpreterContext {
                             .throw();
                         }
                         for _i in 0..val {
-                            self.stack.pop();
+                            self.stack[length - 1].pop();
                         }
-                        self.stack.push(top);
+                        self.stack[length - 1].push(top);
 
                         return Ok(());
                     }
@@ -716,9 +759,10 @@ impl InterpreterContext {
     fn arithmetic(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
         match instr.cmd {
             CommandKind::Add => {
-                if let Some(left) = self.stack.pop() {
-                    if let Some(right) = self.stack.pop() {
-                        self.stack.push(left + right);
+                let length = self.stack.len();
+                if let Some(left) = self.stack[length - 1].pop() {
+                    if let Some(right) = self.stack[length - 1].pop() {
+                        self.stack[length - 1].push(left + right);
 
                         return Ok(());
                     }
@@ -727,9 +771,10 @@ impl InterpreterContext {
                 InterpretErrorKind::StackUnderflow(instr).throw()
             }
             CommandKind::Subtract => {
-                if let Some(left) = self.stack.pop() {
-                    if let Some(right) = self.stack.pop() {
-                        self.stack.push(left - right);
+                let length = self.stack.len();
+                if let Some(left) = self.stack[length - 1].pop() {
+                    if let Some(right) = self.stack[length - 1].pop() {
+                        self.stack[length - 1].push(left - right);
 
                         return Ok(());
                     }
@@ -738,9 +783,10 @@ impl InterpreterContext {
                 InterpretErrorKind::StackUnderflow(instr).throw()
             }
             CommandKind::Multiply => {
-                if let Some(left) = self.stack.pop() {
-                    if let Some(right) = self.stack.pop() {
-                        self.stack.push(left * right);
+                let length = self.stack.len();
+                if let Some(left) = self.stack[length - 1].pop() {
+                    if let Some(right) = self.stack[length - 1].pop() {
+                        self.stack[length - 1].push(left * right);
 
                         return Ok(());
                     }
@@ -749,9 +795,10 @@ impl InterpreterContext {
                 InterpretErrorKind::StackUnderflow(instr).throw()
             }
             CommandKind::IntegerDivision => {
-                if let Some(left) = self.stack.pop() {
-                    if let Some(right) = self.stack.pop() {
-                        self.stack.push(left / right);
+                let length = self.stack.len();
+                if let Some(left) = self.stack[length - 1].pop() {
+                    if let Some(right) = self.stack[length - 1].pop() {
+                        self.stack[length - 1].push(left / right);
 
                         return Ok(());
                     }
@@ -760,9 +807,10 @@ impl InterpreterContext {
                 InterpretErrorKind::StackUnderflow(instr).throw()
             }
             CommandKind::Modulo => {
-                if let Some(left) = self.stack.pop() {
-                    if let Some(right) = self.stack.pop() {
-                        self.stack.push(left % right);
+                let length = self.stack.len();
+                if let Some(left) = self.stack[length - 1].pop() {
+                    if let Some(right) = self.stack[length - 1].pop() {
+                        self.stack[length - 1].push(left % right);
 
                         return Ok(());
                     }
@@ -777,8 +825,9 @@ impl InterpreterContext {
     fn heap(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
         match instr.cmd {
             CommandKind::StoreHeap => {
-                if let Some(val) = self.stack.pop() {
-                    if let Some(addr) = self.stack.pop() {
+                let length = self.stack.len();
+                if let Some(val) = self.stack[length - 1].pop() {
+                    if let Some(addr) = self.stack[length - 1].pop() {
                         if addr < 0 || addr as usize >= self.heap.len() {
                             return InterpretErrorKind::NumberOutOfBoundsError(
                                 instr,
@@ -798,7 +847,8 @@ impl InterpreterContext {
                 InterpretErrorKind::StackUnderflow(instr).throw()
             }
             CommandKind::RetrieveHeap => {
-                if let Some(addr) = self.stack.pop() {
+                let length = self.stack.len();
+                if let Some(addr) = self.stack[length - 1].pop() {
                     if addr < 0 || addr as usize >= self.heap.len() {
                         return InterpretErrorKind::NumberOutOfBoundsError(
                             instr,
@@ -809,7 +859,7 @@ impl InterpreterContext {
                         .throw();
                     }
 
-                    self.stack.push(self.heap[addr as usize]);
+                    self.stack[length - 1].push(self.heap[addr as usize]);
 
                     return Ok(());
                 }
@@ -836,7 +886,7 @@ impl InterpreterContext {
                     if let Some(index) = self.labels.get(label) {
                         self.parser.borrow_mut().index = *index;
 
-                        todo!("add new stack frame");
+                        self.stack.push(StackFrame::new(instr.start_index));
 
                         return Ok(());
                     }
@@ -864,7 +914,8 @@ impl InterpreterContext {
                 InterpretErrorKind::ParseLogicError(instr).throw()
             }
             CommandKind::JumpZero => {
-                if let Some(val) = self.stack.pop() {
+                let length = self.stack.len();
+                if let Some(val) = self.stack[length - 1].pop() {
                     if val != 0 {
                         return Ok(());
                     }
@@ -886,7 +937,8 @@ impl InterpreterContext {
                 InterpretErrorKind::ParseLogicError(instr).throw()
             }
             CommandKind::JumpNegative => {
-                if let Some(val) = self.stack.pop() {
+                let length = self.stack.len();
+                if let Some(val) = self.stack[length - 1].pop() {
                     if val >= 0 {
                         return Ok(());
                     }
@@ -908,7 +960,15 @@ impl InterpreterContext {
                 InterpretErrorKind::ParseLogicError(instr).throw()
             }
             CommandKind::Return => {
-                todo!("pop old stack frame and jump");
+                if let Some(frame) = self.stack.pop() {
+                    let mut parser = self.parser.borrow_mut();
+                    parser.index = frame.caller_index;
+                    if let None = parser.instruction() {
+                        return InterpretErrorKind::ParseLogicError(instr).throw();
+                    }
+                }
+
+                InterpretErrorKind::StackUnderflow(instr).throw()
             }
             CommandKind::Exit => Ok(()),
             _ => InterpretErrorKind::ParseLogicError(instr).throw(),
@@ -918,7 +978,8 @@ impl InterpreterContext {
     fn io(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
         match instr.cmd {
             CommandKind::OutCharacter => {
-                if let Some(character) = self.stack.pop() {
+                let length = self.stack.len();
+                if let Some(character) = self.stack[length - 1].pop() {
                     if character < 0 {
                         return InterpretErrorKind::NumberOutOfBoundsError(
                             instr,
@@ -938,7 +999,8 @@ impl InterpreterContext {
                 InterpretErrorKind::StackUnderflow(instr).throw()
             }
             CommandKind::OutInteger => {
-                if let Some(number) = self.stack.pop() {
+                let length = self.stack.len();
+                if let Some(number) = self.stack[length - 1].pop() {
                     print!("{}", number);
 
                     return Ok(());
@@ -973,7 +1035,7 @@ mod tests {
 
     use crate::ParamKind;
 
-    use super::{CommandKind, ImpKind, Instruction, Interpreter};
+    use super::{CommandKind, ImpKind, Instruction, Interpreter, StackFrame};
     use std::error::Error;
 
     extern crate test;
@@ -1217,7 +1279,7 @@ mod tests {
 
         interpreter.run()?;
 
-        assert_eq!(interpreter.interpreter.stack, vec![-1]);
+        assert_eq!(interpreter.interpreter.stack[0].stack, vec![-1]);
         assert!(interpreter.interpreter.heap.is_empty());
         assert!(interpreter.interpreter.labels.is_empty());
 
@@ -1230,7 +1292,7 @@ mod tests {
 
         interpreter.run()?;
 
-        assert_eq!(interpreter.interpreter.stack, vec![3]);
+        assert_eq!(interpreter.interpreter.stack[0].stack, vec![3]);
         assert!(interpreter.interpreter.heap.is_empty());
         assert!(interpreter.interpreter.labels.is_empty());
 
@@ -1243,7 +1305,7 @@ mod tests {
 
         interpreter.run()?;
 
-        assert_eq!(interpreter.interpreter.stack, vec![-8, 10]);
+        assert_eq!(interpreter.interpreter.stack[0].stack, vec![-8, 10]);
 
         Ok(())
     }
