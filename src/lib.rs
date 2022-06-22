@@ -1,9 +1,12 @@
 #![feature(test)]
 
 use memmap::Mmap;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
 use std::fs::File;
+use std::rc::Rc;
 
 const SPACE: u8 = b' ';
 const TAB: u8 = b'\t';
@@ -19,11 +22,12 @@ struct Parser {
 struct InterpreterContext {
     stack: Vec<i32>,
     heap: Vec<i32>,
-    labels: Vec<String>,
+    labels: HashMap<String, usize>,
+    parser: Rc<RefCell<Parser>>,
 }
 
 pub struct Interpreter {
-    parser: Parser,
+    parser: Rc<RefCell<Parser>>,
     interpreter: InterpreterContext,
 }
 
@@ -79,6 +83,7 @@ enum InterpretErrorKind {
     StackUnderflow(Instruction),
     NumberOutOfBoundsError(Instruction, i32, i32, i32),
     NoTermination(Instruction),
+    UnknownLabel(Instruction),
 }
 
 impl Display for InterpretErrorKind {
@@ -93,7 +98,8 @@ impl InterpretErrorKind {
             InterpretErrorKind::ParseLogicError(instr) => format!("the parser delivered an inconsistent state, something is severely broken from an application logic point of view. in other words: engineer fucked up. if you receive this error message please make sure to report this as an issue (please also supply the whitespace source) over at https://github.com/d3psi/spacey/issues. thank you. issue occurred when attempting to execute: {:?}", instr),
             InterpretErrorKind::StackUnderflow(instr) => format!("stack is empty - failed executing: {:?}", instr),
             InterpretErrorKind::NumberOutOfBoundsError(instr, num, low, high) => format!("number is out of bounds for: {:?}, expected in the closed interval bounded by {} and {}, but was {}", instr, low, high, num),
-            InterpretErrorKind::NoTermination(instr) => format!("no termination instruction after last executed instruction: {:?}", instr)
+            InterpretErrorKind::NoTermination(instr) => format!("no termination instruction after last executed instruction: {:?}", instr),
+            InterpretErrorKind::UnknownLabel(instr) => format!("label is not defined, failing instruction: {:?}", instr)
         };
         Err(Box::new(InterpretError { msg, kind: self }))
     }
@@ -182,23 +188,24 @@ pub struct Instruction {
 }
 
 impl InterpreterContext {
-    fn new(heap_size: usize) -> InterpreterContext {
+    fn new(heap_size: usize, parser: Rc<RefCell<Parser>>) -> InterpreterContext {
         let stack = vec![];
         let heap = vec![0; heap_size];
-        let labels = vec![];
+        let labels = HashMap::new();
 
         InterpreterContext {
             stack,
             heap,
             labels,
+            parser,
         }
     }
 }
 
 impl Interpreter {
     pub fn new(file_name: &str, heap_size: usize) -> Result<Interpreter, Box<dyn Error>> {
-        let parser = Parser::new(file_name)?;
-        let interpreter = InterpreterContext::new(heap_size);
+        let parser = Rc::new(RefCell::new(Parser::new(file_name)?));
+        let interpreter = InterpreterContext::new(heap_size, Rc::clone(&parser));
 
         Ok(Interpreter {
             parser,
@@ -207,7 +214,7 @@ impl Interpreter {
     }
 
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        for instr in &mut self.parser {
+        for instr in self.parser.borrow_mut().into_iter() {
             self.interpreter.exec(instr?)?;
         }
 
@@ -612,7 +619,7 @@ impl Iterator for Interpreter {
     type Item = Result<Instruction, Box<dyn Error>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.parser.instruction()
+        (self.parser.borrow_mut()).instruction()
     }
 }
 
@@ -815,6 +822,94 @@ impl InterpreterContext {
 
     fn flow(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
         match instr.cmd {
+            CommandKind::Mark => {
+                if let Some(ParamKind::Label(label)) = instr.param {
+                    self.labels.insert(label, instr.start_index);
+
+                    return Ok(());
+                }
+
+                InterpretErrorKind::ParseLogicError(instr).throw()
+            }
+            CommandKind::Call => {
+                if let Some(ParamKind::Label(label)) = &instr.param {
+                    if let Some(index) = self.labels.get(label) {
+                        self.parser.borrow_mut().index = *index;
+
+                        todo!("add new stack frame");
+
+                        return Ok(());
+                    }
+
+                    return InterpretErrorKind::UnknownLabel(instr).throw();
+                }
+
+                InterpretErrorKind::ParseLogicError(instr).throw()
+            }
+            CommandKind::Jump => {
+                if let Some(ParamKind::Label(label)) = &instr.param {
+                    if let Some(index) = self.labels.get(label) {
+                        let mut parser = self.parser.borrow_mut();
+                        parser.index = *index;
+                        if let None = parser.instruction() {
+                            return InterpretErrorKind::ParseLogicError(instr).throw();
+                        }
+
+                        return Ok(());
+                    }
+
+                    return InterpretErrorKind::UnknownLabel(instr).throw();
+                }
+
+                InterpretErrorKind::ParseLogicError(instr).throw()
+            }
+            CommandKind::JumpZero => {
+                if let Some(val) = self.stack.pop() {
+                    if val != 0 {
+                        return Ok(());
+                    }
+                }
+                if let Some(ParamKind::Label(label)) = &instr.param {
+                    if let Some(index) = self.labels.get(label) {
+                        let mut parser = self.parser.borrow_mut();
+                        parser.index = *index;
+                        if let None = parser.instruction() {
+                            return InterpretErrorKind::ParseLogicError(instr).throw();
+                        }
+
+                        return Ok(());
+                    }
+
+                    return InterpretErrorKind::UnknownLabel(instr).throw();
+                }
+
+                InterpretErrorKind::ParseLogicError(instr).throw()
+            }
+            CommandKind::JumpNegative => {
+                if let Some(val) = self.stack.pop() {
+                    if val >= 0 {
+                        return Ok(());
+                    }
+                }
+                if let Some(ParamKind::Label(label)) = &instr.param {
+                    if let Some(index) = self.labels.get(label) {
+                        let mut parser = self.parser.borrow_mut();
+                        parser.index = *index;
+                        if let None = parser.instruction() {
+                            return InterpretErrorKind::ParseLogicError(instr).throw();
+                        }
+
+                        return Ok(());
+                    }
+
+                    return InterpretErrorKind::UnknownLabel(instr).throw();
+                }
+
+                InterpretErrorKind::ParseLogicError(instr).throw()
+            }
+            CommandKind::Return => {
+                todo!("pop old stack frame and jump");
+            }
             CommandKind::Exit => Ok(()),
             _ => InterpretErrorKind::ParseLogicError(instr).throw(),
         }
