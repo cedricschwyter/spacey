@@ -1020,13 +1020,14 @@ impl InterpreterContext {
 
                 let length = self.stack.len();
 
-                if let Some(input) = input_text.as_str().chars().next() {
+                let input_text = input_text.trim();
+                if let Some(input) = input_text.chars().next() {
                     self.stack[length - 1].push(input as i32);
 
                     return Ok(());
                 }
 
-                InterpretErrorKind::StdinError(instr, input_text).throw()
+                InterpretErrorKind::StdinError(instr, input_text.to_string()).throw()
             }
             CommandKind::ReadInteger => {
                 let mut input_text = String::new();
