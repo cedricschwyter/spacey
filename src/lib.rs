@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
 use std::fs::File;
+use std::io;
 use std::ops::Index;
 use std::rc::Rc;
 
@@ -120,6 +121,7 @@ enum InterpretErrorKind {
     NumberOutOfBoundsError(Instruction, i32, i32, i32),
     NoTermination(Instruction),
     UnknownLabel(Instruction),
+    StdinError(Instruction, String),
 }
 
 impl Display for InterpretErrorKind {
@@ -135,7 +137,8 @@ impl InterpretErrorKind {
             InterpretErrorKind::StackUnderflow(instr) => format!("stack is empty - failed executing: {:?}", instr),
             InterpretErrorKind::NumberOutOfBoundsError(instr, num, low, high) => format!("number is out of bounds for: {:?}, expected in the closed interval bounded by {} and {}, but was {}", instr, low, high, num),
             InterpretErrorKind::NoTermination(instr) => format!("no termination instruction after last executed instruction: {:?}", instr),
-            InterpretErrorKind::UnknownLabel(instr) => format!("label is not defined, failing instruction: {:?}", instr)
+            InterpretErrorKind::UnknownLabel(instr) => format!("label is not defined, failing instruction: {:?}", instr),
+            InterpretErrorKind::StdinError(instr, val) => format!("only one character allowed at a time, got {} when executing: {:?}", val, instr)
         };
         Err(Box::new(InterpretError { msg, kind: self }))
     }
@@ -1009,10 +1012,33 @@ impl InterpreterContext {
                 InterpretErrorKind::StackUnderflow(instr).throw()
             }
             CommandKind::ReadCharacter => {
-                unimplemented!()
+                let mut input_text = String::new();
+                io::stdin().read_line(&mut input_text)?;
+                if input_text.len() != 2 {
+                    return InterpretErrorKind::StdinError(instr, input_text).throw();
+                }
+
+                let length = self.stack.len();
+
+                if let Some(input) = input_text.as_str().chars().next() {
+                    self.stack[length - 1].push(input as i32);
+
+                    return Ok(());
+                }
+
+                InterpretErrorKind::StdinError(instr, input_text).throw()
             }
             CommandKind::ReadInteger => {
-                unimplemented!()
+                let mut input_text = String::new();
+                io::stdin().read_line(&mut input_text)?;
+
+                let length = self.stack.len();
+
+                let trimmed = input_text.trim();
+                let num = trimmed.parse::<i32>()?;
+                self.stack[length - 1].push(num);
+
+                Ok(())
             }
             _ => InterpretErrorKind::ParseLogicError(instr).throw(),
         }
@@ -1035,7 +1061,7 @@ mod tests {
 
     use crate::ParamKind;
 
-    use super::{CommandKind, ImpKind, Instruction, Interpreter, StackFrame};
+    use super::{CommandKind, ImpKind, Instruction, Interpreter};
     use std::error::Error;
 
     extern crate test;
