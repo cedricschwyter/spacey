@@ -1,14 +1,12 @@
 #![feature(test)]
 
 use memmap::Mmap;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
 use std::fs::File;
 use std::io;
 use std::ops::Index;
-use std::rc::Rc;
 
 const SPACE: u8 = b' ';
 const TAB: u8 = b'\t';
@@ -56,16 +54,12 @@ impl Index<usize> for StackFrame {
     }
 }
 
-struct InterpreterContext {
+pub struct Interpreter {
     stack: Vec<StackFrame>,
     heap: Vec<i32>,
     labels: HashMap<String, usize>,
-    parser: Rc<RefCell<Parser>>,
-}
-
-pub struct Interpreter {
-    parser: Rc<RefCell<Parser>>,
-    interpreter: InterpreterContext,
+    instruction_pointer: usize,
+    instructions: Vec<Instruction>,
 }
 
 #[derive(Debug)]
@@ -224,41 +218,6 @@ pub struct Instruction {
     cmd: CommandKind,
     param: Option<ParamKind>,
     start_index: usize,
-}
-
-impl InterpreterContext {
-    fn new(heap_size: usize, parser: Rc<RefCell<Parser>>) -> InterpreterContext {
-        let stack = vec![StackFrame::new(0)];
-        let heap = vec![0; heap_size];
-        let labels = HashMap::new();
-
-        InterpreterContext {
-            stack,
-            heap,
-            labels,
-            parser,
-        }
-    }
-}
-
-impl Interpreter {
-    pub fn new(file_name: &str, heap_size: usize) -> Result<Interpreter, Box<dyn Error>> {
-        let parser = Rc::new(RefCell::new(Parser::new(file_name)?));
-        let interpreter = InterpreterContext::new(heap_size, Rc::clone(&parser));
-
-        Ok(Interpreter {
-            parser,
-            interpreter,
-        })
-    }
-
-    pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        for instr in self.parser.borrow_mut().into_iter() {
-            self.interpreter.exec(instr?)?;
-        }
-
-        Ok(())
-    }
 }
 
 impl Parser {
@@ -654,15 +613,44 @@ impl Iterator for &mut Parser {
     }
 }
 
-impl Iterator for Interpreter {
-    type Item = Result<Instruction, Box<dyn Error>>;
+impl Interpreter {
+    pub fn new(file_name: &str, heap_size: usize) -> Result<Interpreter, Box<dyn Error>> {
+        let mut parser = Parser::new(file_name)?;
+        let mut instructions = vec![];
+        for instr in &mut parser {
+            instructions.push(instr?);
+        }
+        let stack = vec![StackFrame::new(0)];
+        let heap = vec![0; heap_size];
+        let labels = HashMap::new();
+        let instruction_pointer = 0;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        (self.parser.borrow_mut()).instruction()
+        Ok(Interpreter {
+            instructions,
+            stack,
+            heap,
+            labels,
+            instruction_pointer,
+        })
     }
-}
 
-impl InterpreterContext {
+    pub fn next_instruction(&mut self) -> Option<Instruction> {
+        self.instruction_pointer += 1;
+        if self.instruction_pointer < self.instructions.len() {
+            return Some(self.instructions[self.instruction_pointer - 1].clone());
+        }
+
+        None
+    }
+
+    pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
+        while let Some(instr) = self.next_instruction() {
+            self.exec(instr)?;
+        }
+
+        Ok(())
+    }
+
     fn stack(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
         match instr.cmd {
             CommandKind::PushStack => {
@@ -887,9 +875,9 @@ impl InterpreterContext {
             CommandKind::Call => {
                 if let Some(ParamKind::Label(label)) = &instr.param {
                     if let Some(index) = self.labels.get(label) {
-                        self.parser.borrow_mut().index = *index;
+                        self.instruction_pointer = *index;
 
-                        self.stack.push(StackFrame::new(instr.start_index));
+                        self.stack.push(StackFrame::new(self.instruction_pointer));
 
                         return Ok(());
                     }
@@ -902,11 +890,7 @@ impl InterpreterContext {
             CommandKind::Jump => {
                 if let Some(ParamKind::Label(label)) = &instr.param {
                     if let Some(index) = self.labels.get(label) {
-                        let mut parser = self.parser.borrow_mut();
-                        parser.index = *index;
-                        if let None = parser.instruction() {
-                            return InterpretErrorKind::ParseLogicError(instr).throw();
-                        }
+                        self.instruction_pointer = *index;
 
                         return Ok(());
                     }
@@ -925,11 +909,7 @@ impl InterpreterContext {
                 }
                 if let Some(ParamKind::Label(label)) = &instr.param {
                     if let Some(index) = self.labels.get(label) {
-                        let mut parser = self.parser.borrow_mut();
-                        parser.index = *index;
-                        if let None = parser.instruction() {
-                            return InterpretErrorKind::ParseLogicError(instr).throw();
-                        }
+                        self.instruction_pointer = *index;
 
                         return Ok(());
                     }
@@ -948,11 +928,7 @@ impl InterpreterContext {
                 }
                 if let Some(ParamKind::Label(label)) = &instr.param {
                     if let Some(index) = self.labels.get(label) {
-                        let mut parser = self.parser.borrow_mut();
-                        parser.index = *index;
-                        if let None = parser.instruction() {
-                            return InterpretErrorKind::ParseLogicError(instr).throw();
-                        }
+                        self.instruction_pointer = *index;
 
                         return Ok(());
                     }
@@ -964,11 +940,7 @@ impl InterpreterContext {
             }
             CommandKind::Return => {
                 if let Some(frame) = self.stack.pop() {
-                    let mut parser = self.parser.borrow_mut();
-                    parser.index = frame.caller_index;
-                    if let None = parser.instruction() {
-                        return InterpretErrorKind::ParseLogicError(instr).throw();
-                    }
+                    self.instruction_pointer = frame.caller_index + 1;
                 }
 
                 InterpretErrorKind::StackUnderflow(instr).throw()
@@ -1070,18 +1042,16 @@ mod tests {
     use test::Bencher;
 
     fn test_parse(
-        interpreter: Interpreter,
+        interpreter: &mut Interpreter,
         results: Vec<Instruction>,
     ) -> Result<(), Box<dyn Error>> {
-        for (i, instr) in interpreter.enumerate() {
+        let mut i = 0;
+        while let Some(instr) = interpreter.next_instruction() {
             if i == results.len() {
                 break;
             }
-            if let Ok(instr) = instr {
-                assert_eq!(instr, results[i]);
-            } else if let Err(err) = instr {
-                return Err(err);
-            }
+            assert_eq!(instr, results[i]);
+            i += 1;
         }
 
         Ok(())
@@ -1089,7 +1059,7 @@ mod tests {
 
     #[test]
     fn parse_stack() -> Result<(), Box<dyn Error>> {
-        let interpreter = Interpreter::new("ws/parse_stack.ws", 0)?;
+        let mut interpreter = Interpreter::new("ws/parse_stack.ws", 0)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::Stack,
@@ -1135,12 +1105,12 @@ mod tests {
             },
         ];
 
-        test_parse(interpreter, results)
+        test_parse(&mut interpreter, results)
     }
 
     #[test]
     fn parse_arithmetic() -> Result<(), Box<dyn Error>> {
-        let interpreter = Interpreter::new("ws/parse_arithmetic.ws", 0)?;
+        let mut interpreter = Interpreter::new("ws/parse_arithmetic.ws", 0)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::Arithmetic,
@@ -1180,12 +1150,12 @@ mod tests {
             },
         ];
 
-        test_parse(interpreter, results)
+        test_parse(&mut interpreter, results)
     }
 
     #[test]
     fn parse_heap() -> Result<(), Box<dyn Error>> {
-        let interpreter = Interpreter::new("ws/parse_heap.ws", 0)?;
+        let mut interpreter = Interpreter::new("ws/parse_heap.ws", 0)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::Heap,
@@ -1207,12 +1177,12 @@ mod tests {
             },
         ];
 
-        test_parse(interpreter, results)
+        test_parse(&mut interpreter, results)
     }
 
     #[test]
     fn parse_flow() -> Result<(), Box<dyn Error>> {
-        let interpreter = Interpreter::new("ws/parse_flow.ws", 0)?;
+        let mut interpreter = Interpreter::new("ws/parse_flow.ws", 0)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::Flow,
@@ -1258,12 +1228,12 @@ mod tests {
             },
         ];
 
-        test_parse(interpreter, results)
+        test_parse(&mut interpreter, results)
     }
 
     #[test]
     fn parse_io() -> Result<(), Box<dyn Error>> {
-        let interpreter = Interpreter::new("ws/parse_io.ws", 0)?;
+        let mut interpreter = Interpreter::new("ws/parse_io.ws", 0)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::IO,
@@ -1297,7 +1267,7 @@ mod tests {
             },
         ];
 
-        test_parse(interpreter, results)
+        test_parse(&mut interpreter, results)
     }
 
     #[test]
@@ -1306,9 +1276,9 @@ mod tests {
 
         interpreter.run()?;
 
-        assert_eq!(interpreter.interpreter.stack[0].stack, vec![-1]);
-        assert!(interpreter.interpreter.heap.is_empty());
-        assert!(interpreter.interpreter.labels.is_empty());
+        assert_eq!(interpreter.stack[0].stack, vec![-1]);
+        assert!(interpreter.heap.is_empty());
+        assert!(interpreter.labels.is_empty());
 
         Ok(())
     }
@@ -1319,9 +1289,9 @@ mod tests {
 
         interpreter.run()?;
 
-        assert_eq!(interpreter.interpreter.stack[0].stack, vec![3]);
-        assert!(interpreter.interpreter.heap.is_empty());
-        assert!(interpreter.interpreter.labels.is_empty());
+        assert_eq!(interpreter.stack[0].stack, vec![3]);
+        assert!(interpreter.heap.is_empty());
+        assert!(interpreter.labels.is_empty());
 
         Ok(())
     }
@@ -1332,7 +1302,7 @@ mod tests {
 
         interpreter.run()?;
 
-        assert_eq!(interpreter.interpreter.stack[0].stack, vec![-8, 10]);
+        assert_eq!(interpreter.stack[0].stack, vec![-8, 10]);
 
         Ok(())
     }
