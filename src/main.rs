@@ -35,7 +35,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
     let mut interpreter = Interpreter::new(file_name, heap_size)?;
 
-    interpreter.run()?;
+    while let Some(instr) = interpreter.next_instruction() {
+        dbg!(&instr);
+        interpreter.exec(instr)?;
+    }
 
     Ok(())
 }
