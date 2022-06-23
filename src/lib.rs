@@ -1,6 +1,8 @@
 #![feature(test)]
 
+use getch::Getch;
 use memmap::Mmap;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
@@ -18,6 +20,8 @@ struct Parser {
     instruction_index: usize,
 }
 
+/// The main component of this crate, obviously.
+/// Handles everything.
 pub struct Interpreter {
     stack: Vec<i32>,
     call_stack: Vec<usize>,
@@ -26,6 +30,7 @@ pub struct Interpreter {
     instruction_pointer: usize,
     instructions: Vec<Instruction>,
     debug: bool,
+    debug_heap: bool,
     done: bool,
 }
 
@@ -180,6 +185,9 @@ enum ParamKind {
     Label(String),
 }
 
+/// Intermediate representation for a whitespace instruction. Using the term IR here because I
+/// might turn this crate also into a whitespace compiler in the future.
+/// Contains data as well as metadata about whitespace instructions
 #[derive(Debug, PartialEq, Clone)]
 pub struct Instruction {
     imp: ImpKind,
@@ -663,11 +671,19 @@ impl Iterator for &mut Parser {
 }
 
 impl Interpreter {
+    /// Creates a new interpreter with the given arguments
+    ///
+    /// - `file_name` the path to the whitespace source file on disk
+    /// - `heap_size` the size of the heap address space (each address holds an i32)
+    /// - `ir` print the IR of the parsed source file to stdout
+    /// - `debug` print debugging information to stdout when executing an instruction
+    /// - `debug_heap` print heap dump to stdout when executing an instruction
     pub fn new(
         file_name: &str,
         heap_size: usize,
         ir: bool,
         debug: bool,
+        debug_heap: bool,
     ) -> Result<Interpreter, Box<dyn Error>> {
         let mut parser = Parser::new(file_name)?;
         let mut instructions = vec![];
@@ -701,10 +717,13 @@ impl Interpreter {
             labels,
             instruction_pointer,
             debug,
+            debug_heap,
             done,
         })
     }
 
+    /// Returns the next instruction to be executed in a `Some` variant. None if the program has
+    /// reached its end.
     pub fn next_instruction(&self) -> Option<Instruction> {
         if self.done {
             return None;
@@ -716,6 +735,7 @@ impl Interpreter {
         None
     }
 
+    /// Executes all instructions - runs the program.
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
         while let Some(instr) = self.next_instruction() {
             self.exec(instr)?;
@@ -729,6 +749,7 @@ impl Interpreter {
         Ok(())
     }
 
+    /// Resets the internal interpreter state/the VM without re-parsing the source file
     pub fn reset(&mut self) {
         self.stack.clear();
         self.call_stack.clear();
@@ -1035,7 +1056,7 @@ impl Interpreter {
                         .throw();
                     }
                     if let Some(character) = char::from_u32(character as u32) {
-                        print!("{}", character);
+                        write!(stdout(), "{}", character)?;
                         stdout().flush()?;
 
                         return Ok(());
@@ -1046,7 +1067,7 @@ impl Interpreter {
             }
             CommandKind::OutInteger => {
                 if let Some(number) = self.stack.pop() {
-                    print!("{}", number);
+                    write!(stdout(), "{}", number)?;
                     stdout().flush()?;
 
                     return Ok(());
@@ -1054,7 +1075,32 @@ impl Interpreter {
 
                 InterpretErrorKind::StackUnderflow(instr).throw()
             }
-            CommandKind::ReadCharacter => InterpretErrorKind::StdinError(instr).throw(),
+            CommandKind::ReadCharacter => {
+                if let Some(addr) = self.stack.pop() {
+                    if addr < 0 || addr as usize >= self.heap.len() {
+                        return InterpretErrorKind::NumberOutOfBoundsError(
+                            instr,
+                            addr,
+                            0,
+                            self.heap.len() as i32 - 1,
+                        )
+                        .throw();
+                    }
+
+                    stdout().flush()?;
+                    return match Getch::new().getch() {
+                        Ok(val) => {
+                            self.heap[addr as usize] = val as i32;
+                            write!(stdout(), "{}", char::from_u32(val as u32).unwrap())?;
+                            stdout().flush()?;
+                            Ok(())
+                        }
+                        Err(err) => Err(Box::new(err)),
+                    };
+                }
+
+                InterpretErrorKind::StackUnderflow(instr).throw()
+            }
             CommandKind::ReadInteger => {
                 if let Some(addr) = self.stack.pop() {
                     if addr < 0 || addr as usize >= self.heap.len() {
@@ -1066,6 +1112,7 @@ impl Interpreter {
                         )
                         .throw();
                     }
+                    stdout().flush()?;
                     let mut input_text = String::new();
                     stdin().read_line(&mut input_text)?;
 
@@ -1082,12 +1129,28 @@ impl Interpreter {
         }
     }
 
+    fn generate_debug_heap_dump(&self) -> BTreeMap<usize, i32> {
+        let mut heap_map = BTreeMap::new();
+        for (addr, val) in self.heap.iter().enumerate() {
+            if *val != 0 {
+                heap_map.insert(addr, *val);
+            }
+        }
+        heap_map
+    }
+
+    /// Executes a single instruction in the interpreter
+    ///
+    /// `instr` - the instruction to execute
     pub fn exec(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
         if self.debug {
             dbg!(&self.stack);
             dbg!(&self.call_stack);
             dbg!(&self.instruction_pointer);
             dbg!(&self.instructions[self.instruction_pointer]);
+        }
+        if self.debug_heap {
+            dbg!(self.generate_debug_heap_dump());
         }
         let res = match instr.imp {
             ImpKind::Stack => self.stack(instr),
@@ -1134,7 +1197,7 @@ mod tests {
 
     #[test]
     fn parse_stack() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/parse_stack.ws", 0, true, true)?;
+        let mut interpreter = Interpreter::new("ws/parse_stack.ws", 0, true, true, true)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::Stack,
@@ -1192,7 +1255,7 @@ mod tests {
 
     #[test]
     fn parse_arithmetic() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/parse_arithmetic.ws", 0, true, true)?;
+        let mut interpreter = Interpreter::new("ws/parse_arithmetic.ws", 0, true, true, true)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::Arithmetic,
@@ -1243,7 +1306,7 @@ mod tests {
 
     #[test]
     fn parse_heap() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/parse_heap.ws", 0, true, true)?;
+        let mut interpreter = Interpreter::new("ws/parse_heap.ws", 0, true, true, true)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::Heap,
@@ -1273,7 +1336,7 @@ mod tests {
 
     #[test]
     fn parse_flow() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/parse_flow.ws", 0, true, true)?;
+        let mut interpreter = Interpreter::new("ws/parse_flow.ws", 0, true, true, true)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::Flow,
@@ -1331,7 +1394,7 @@ mod tests {
 
     #[test]
     fn parse_io() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/parse_io.ws", 0, true, true)?;
+        let mut interpreter = Interpreter::new("ws/parse_io.ws", 0, true, true, true)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::IO,
@@ -1375,7 +1438,7 @@ mod tests {
 
     #[test]
     fn interpret_stack() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/interpret_stack.ws", 0, true, true)?;
+        let mut interpreter = Interpreter::new("ws/interpret_stack.ws", 0, true, true, true)?;
 
         interpreter.run()?;
 
@@ -1388,7 +1451,7 @@ mod tests {
 
     #[test]
     fn interpret_arithmetic() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/interpret_arithmetic.ws", 0, true, true)?;
+        let mut interpreter = Interpreter::new("ws/interpret_arithmetic.ws", 0, true, true, true)?;
 
         interpreter.run()?;
 
@@ -1401,7 +1464,7 @@ mod tests {
 
     #[test]
     fn interpret_heap() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/interpret_heap.ws", 1, true, true)?;
+        let mut interpreter = Interpreter::new("ws/interpret_heap.ws", 1, true, true, true)?;
 
         interpreter.run()?;
 
@@ -1412,7 +1475,7 @@ mod tests {
 
     #[test]
     fn interpret_flow() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/interpret_flow.ws", 0, true, true)?;
+        let mut interpreter = Interpreter::new("ws/interpret_flow.ws", 0, true, true, true)?;
 
         interpreter.run()?;
         assert_eq!(interpreter.stack, vec![]);
@@ -1422,7 +1485,7 @@ mod tests {
 
     #[test]
     fn interpret_io() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/interpret_io.ws", 0, true, true)?;
+        let mut interpreter = Interpreter::new("ws/interpret_io.ws", 0, true, true, true)?;
 
         interpreter.run()?;
 
@@ -1431,7 +1494,7 @@ mod tests {
 
     #[bench]
     fn bench_hello_world(b: &mut Bencher) -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/hello_world.ws", 0, false, false)?;
+        let mut interpreter = Interpreter::new("ws/hello_world.ws", 0, false, false, false)?;
         b.iter(|| -> Result<(), Box<dyn Error>> {
             interpreter.run()?;
             interpreter.reset();
@@ -1444,7 +1507,7 @@ mod tests {
 
     #[bench]
     fn bench_count(b: &mut Bencher) -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/count.ws", 0, false, false)?;
+        let mut interpreter = Interpreter::new("ws/count.ws", 0, false, false, false)?;
         b.iter(|| -> Result<(), Box<dyn Error>> {
             interpreter.run()?;
             interpreter.reset();
