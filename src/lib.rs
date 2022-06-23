@@ -1422,9 +1422,18 @@ mod tests {
     }
 
     #[bench]
-    fn bench_interpret(b: &mut Bencher) {
+    fn bench_hello_world(b: &mut Bencher) {
         b.iter(|| -> Result<(), Box<dyn Error>> {
-            let mut interpreter = Interpreter::new("ws/hello_world.ws", 0, true, true)?;
+            let mut interpreter = Interpreter::new("ws/hello_world.ws", 0, false, false)?;
+            interpreter.run()?;
+            Ok(())
+        });
+    }
+
+    #[bench]
+    fn bench_count(b: &mut Bencher) {
+        b.iter(|| -> Result<(), Box<dyn Error>> {
+            let mut interpreter = Interpreter::new("ws/count.ws", 0, false, false)?;
             interpreter.run()?;
             Ok(())
         });
