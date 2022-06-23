@@ -934,7 +934,7 @@ impl Interpreter {
                 if let Some(ParamKind::Label(label)) = &instr.param {
                     if let Some(index) = self.labels.get(label) {
                         self.call_stack.push(self.instruction_pointer);
-                        self.instruction_pointer = *index + 1;
+                        self.instruction_pointer = *index;
 
                         return Ok(());
                     }
@@ -947,7 +947,7 @@ impl Interpreter {
             CommandKind::Jump => {
                 if let Some(ParamKind::Label(label)) = &instr.param {
                     if let Some(index) = self.labels.get(label) {
-                        self.instruction_pointer = *index + 1;
+                        self.instruction_pointer = *index;
 
                         return Ok(());
                     }
@@ -958,37 +958,40 @@ impl Interpreter {
                 InterpretErrorKind::ParseLogicError(instr).throw()
             }
             CommandKind::JumpZero => {
-                let length = self.stack.len();
-                let val = self.stack[length - 1];
-                if val != 0 {
-                    return Ok(());
-                }
-                if let Some(ParamKind::Label(label)) = &instr.param {
-                    if let Some(index) = self.labels.get(label) {
-                        self.instruction_pointer = *index + 1;
-
+                if let Some(val) = self.stack.pop() {
+                    if val != 0 {
                         return Ok(());
                     }
+                    if let Some(ParamKind::Label(label)) = &instr.param {
+                        if let Some(index) = self.labels.get(label) {
+                            self.instruction_pointer = *index;
 
-                    return InterpretErrorKind::UnknownLabel(instr).throw();
+                            return Ok(());
+                        }
+
+                        return InterpretErrorKind::UnknownLabel(instr).throw();
+                    }
+                    return InterpretErrorKind::StackUnderflow(instr).throw();
                 }
 
                 InterpretErrorKind::ParseLogicError(instr).throw()
             }
             CommandKind::JumpNegative => {
-                let length = self.stack.len();
-                let val = self.stack[length - 1];
-                if val >= 0 {
-                    return Ok(());
-                }
-                if let Some(ParamKind::Label(label)) = &instr.param {
-                    if let Some(index) = self.labels.get(label) {
-                        self.instruction_pointer = *index + 1;
-
+                if let Some(val) = self.stack.pop() {
+                    if val >= 0 {
                         return Ok(());
                     }
+                    if let Some(ParamKind::Label(label)) = &instr.param {
+                        if let Some(index) = self.labels.get(label) {
+                            self.instruction_pointer = *index;
 
-                    return InterpretErrorKind::UnknownLabel(instr).throw();
+                            return Ok(());
+                        }
+
+                        return InterpretErrorKind::UnknownLabel(instr).throw();
+                    }
+
+                    return InterpretErrorKind::StackUnderflow(instr).throw();
                 }
 
                 InterpretErrorKind::ParseLogicError(instr).throw()
