@@ -59,6 +59,7 @@ pub struct Interpreter {
     labels: HashMap<String, usize>,
     instruction_pointer: usize,
     instructions: Vec<Instruction>,
+    debug: bool,
 }
 
 #[derive(Debug)]
@@ -600,7 +601,12 @@ impl Iterator for &mut Parser {
 }
 
 impl Interpreter {
-    pub fn new(file_name: &str, heap_size: usize, ir: bool) -> Result<Interpreter, Box<dyn Error>> {
+    pub fn new(
+        file_name: &str,
+        heap_size: usize,
+        ir: bool,
+        debug: bool,
+    ) -> Result<Interpreter, Box<dyn Error>> {
         let mut parser = Parser::new(file_name)?;
         let mut instructions = vec![];
         for instr in &mut parser {
@@ -629,6 +635,7 @@ impl Interpreter {
             heap,
             labels,
             instruction_pointer,
+            debug,
         })
     }
 
@@ -1021,6 +1028,9 @@ impl Interpreter {
     }
 
     pub fn exec(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
+        dbg!(&self.stack);
+        dbg!(&self.instruction_pointer - 1);
+        dbg!(&self.instructions[self.instruction_pointer - 1]);
         match instr.imp {
             ImpKind::Stack => self.stack(instr),
             ImpKind::Arithmetic => self.arithmetic(instr),
@@ -1062,7 +1072,7 @@ mod tests {
 
     #[test]
     fn parse_stack() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/parse_stack.ws", 0, true)?;
+        let mut interpreter = Interpreter::new("ws/parse_stack.ws", 0, true, true)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::Stack,
@@ -1113,7 +1123,7 @@ mod tests {
 
     #[test]
     fn parse_arithmetic() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/parse_arithmetic.ws", 0, true)?;
+        let mut interpreter = Interpreter::new("ws/parse_arithmetic.ws", 0, true, true)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::Arithmetic,
@@ -1158,7 +1168,7 @@ mod tests {
 
     #[test]
     fn parse_heap() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/parse_heap.ws", 0, true)?;
+        let mut interpreter = Interpreter::new("ws/parse_heap.ws", 0, true, true)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::Heap,
@@ -1185,7 +1195,7 @@ mod tests {
 
     #[test]
     fn parse_flow() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/parse_flow.ws", 0, true)?;
+        let mut interpreter = Interpreter::new("ws/parse_flow.ws", 0, true, true)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::Flow,
@@ -1236,7 +1246,7 @@ mod tests {
 
     #[test]
     fn parse_io() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/parse_io.ws", 0, true)?;
+        let mut interpreter = Interpreter::new("ws/parse_io.ws", 0, true, true)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::IO,
@@ -1275,7 +1285,7 @@ mod tests {
 
     #[test]
     fn interpret_stack() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/interpret_stack.ws", 0, true)?;
+        let mut interpreter = Interpreter::new("ws/interpret_stack.ws", 0, true, true)?;
 
         interpreter.run()?;
 
@@ -1288,7 +1298,7 @@ mod tests {
 
     #[test]
     fn interpret_arithmetic() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/interpret_arithmetic.ws", 0, true)?;
+        let mut interpreter = Interpreter::new("ws/interpret_arithmetic.ws", 0, true, true)?;
 
         interpreter.run()?;
 
@@ -1301,7 +1311,7 @@ mod tests {
 
     #[test]
     fn interpret_heap() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/interpret_heap.ws", 1, true)?;
+        let mut interpreter = Interpreter::new("ws/interpret_heap.ws", 1, true, true)?;
 
         interpreter.run()?;
 
@@ -1312,7 +1322,7 @@ mod tests {
 
     #[test]
     fn interpret_io() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/hello_world.ws", 0, true)?;
+        let mut interpreter = Interpreter::new("ws/hello_world.ws", 0, true, true)?;
 
         interpreter.run()?;
 
@@ -1322,7 +1332,7 @@ mod tests {
     #[bench]
     fn bench_interpret(b: &mut Bencher) {
         b.iter(|| -> Result<(), Box<dyn Error>> {
-            let mut interpreter = Interpreter::new("ws/hello_world.ws", 0, true)?;
+            let mut interpreter = Interpreter::new("ws/hello_world.ws", 0, true, true)?;
             interpreter.run()?;
             Ok(())
         });

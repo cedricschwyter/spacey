@@ -31,6 +31,14 @@ fn args() -> ArgMatches {
                 .takes_value(false)
                 .help("prints intermediate representation of instructions"),
         )
+        .arg(
+            Arg::new("debug")
+                .short('d')
+                .long("debug")
+                .takes_value(false)
+                .required(false)
+                .help("prints debug information after each executed instruction"),
+        )
         .get_matches()
 }
 
@@ -42,7 +50,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         None => 524288,
     };
     let ir = args.is_present("ir");
-    let mut interpreter = Interpreter::new(file_name, heap_size, ir)?;
+    let debug = args.is_present("debug");
+    let mut interpreter = Interpreter::new(file_name, heap_size, ir, debug)?;
 
     interpreter.run()?;
 
