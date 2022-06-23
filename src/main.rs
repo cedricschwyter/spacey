@@ -53,7 +53,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let debug = args.is_present("debug");
     let mut interpreter = Interpreter::new(file_name, heap_size, ir, debug)?;
 
-    interpreter.run()?;
+    if !ir {
+        interpreter.run()?;
+    }
 
     Ok(())
 }

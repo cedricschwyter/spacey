@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
 use std::fs::File;
-use std::io;
+use std::io::{stdin, stdout, Write};
 
 const SPACE: u8 = b' ';
 const TAB: u8 = b'\t';
@@ -26,6 +26,7 @@ pub struct Interpreter {
     instruction_pointer: usize,
     instructions: Vec<Instruction>,
     debug: bool,
+    done: bool,
 }
 
 #[derive(Debug)]
@@ -81,7 +82,7 @@ enum InterpretErrorKind {
     NumberOutOfBoundsError(Instruction, i32, i32, i32),
     NoTermination(Instruction),
     UnknownLabel(Instruction),
-    StdinError(Instruction, String),
+    StdinError(Instruction),
 }
 
 impl Display for InterpretErrorKind {
@@ -98,7 +99,7 @@ impl InterpretErrorKind {
             InterpretErrorKind::NumberOutOfBoundsError(instr, num, low, high) => format!("number is out of bounds for: {:?}, expected in the closed interval bounded by {} and {}, but was {}", instr, low, high, num),
             InterpretErrorKind::NoTermination(instr) => format!("no termination instruction after last executed instruction: {:?}", instr),
             InterpretErrorKind::UnknownLabel(instr) => format!("label is not defined, failing instruction: {:?}", instr),
-            InterpretErrorKind::StdinError(instr, val) => format!("only one character allowed at a time, got {} when executing: {:?}", val, instr)
+            InterpretErrorKind::StdinError(instr) => format!("stdin error when executing: {:?}", instr)
         };
         Err(Box::new(InterpretError { msg, kind: self }))
     }
@@ -633,6 +634,7 @@ impl Interpreter {
         let heap = vec![0; heap_size];
         let mut labels = HashMap::new();
         let instruction_pointer = 0;
+        let done = false;
 
         for i in 0..instructions.len() {
             if instructions[i].cmd == CommandKind::Mark {
@@ -650,10 +652,14 @@ impl Interpreter {
             labels,
             instruction_pointer,
             debug,
+            done,
         })
     }
 
     pub fn next_instruction(&mut self) -> Option<Instruction> {
+        if self.done {
+            return None;
+        }
         if self.instruction_pointer < self.instructions.len() {
             return Some(self.instructions[self.instruction_pointer].clone());
         }
@@ -767,8 +773,8 @@ impl Interpreter {
     fn arithmetic(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
         match instr.cmd {
             CommandKind::Add => {
-                if let Some(left) = self.stack.pop() {
-                    if let Some(right) = self.stack.pop() {
+                if let Some(right) = self.stack.pop() {
+                    if let Some(left) = self.stack.pop() {
                         self.stack.push(left + right);
 
                         return Ok(());
@@ -778,8 +784,8 @@ impl Interpreter {
                 InterpretErrorKind::StackUnderflow(instr).throw()
             }
             CommandKind::Subtract => {
-                if let Some(left) = self.stack.pop() {
-                    if let Some(right) = self.stack.pop() {
+                if let Some(right) = self.stack.pop() {
+                    if let Some(left) = self.stack.pop() {
                         self.stack.push(left - right);
 
                         return Ok(());
@@ -789,8 +795,8 @@ impl Interpreter {
                 InterpretErrorKind::StackUnderflow(instr).throw()
             }
             CommandKind::Multiply => {
-                if let Some(left) = self.stack.pop() {
-                    if let Some(right) = self.stack.pop() {
+                if let Some(right) = self.stack.pop() {
+                    if let Some(left) = self.stack.pop() {
                         self.stack.push(left * right);
 
                         return Ok(());
@@ -800,8 +806,8 @@ impl Interpreter {
                 InterpretErrorKind::StackUnderflow(instr).throw()
             }
             CommandKind::IntegerDivision => {
-                if let Some(left) = self.stack.pop() {
-                    if let Some(right) = self.stack.pop() {
+                if let Some(right) = self.stack.pop() {
+                    if let Some(left) = self.stack.pop() {
                         self.stack.push(left / right);
 
                         return Ok(());
@@ -811,8 +817,8 @@ impl Interpreter {
                 InterpretErrorKind::StackUnderflow(instr).throw()
             }
             CommandKind::Modulo => {
-                if let Some(left) = self.stack.pop() {
-                    if let Some(right) = self.stack.pop() {
+                if let Some(right) = self.stack.pop() {
+                    if let Some(left) = self.stack.pop() {
                         self.stack.push(left % right);
 
                         return Ok(());
@@ -873,21 +879,12 @@ impl Interpreter {
 
     fn flow(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
         match instr.cmd {
-            CommandKind::Mark => {
-                if let Some(ParamKind::Label(label)) = instr.param {
-                    self.labels.insert(label, instr.instruction_index);
-
-                    return Ok(());
-                }
-
-                InterpretErrorKind::ParseLogicError(instr).throw()
-            }
+            CommandKind::Mark => Ok(()),
             CommandKind::Call => {
                 if let Some(ParamKind::Label(label)) = &instr.param {
                     if let Some(index) = self.labels.get(label) {
+                        self.call_stack.push(self.instruction_pointer);
                         self.instruction_pointer = *index + 1;
-
-                        self.call_stack.push(instr.instruction_index);
 
                         return Ok(());
                     }
@@ -900,7 +897,7 @@ impl Interpreter {
             CommandKind::Jump => {
                 if let Some(ParamKind::Label(label)) = &instr.param {
                     if let Some(index) = self.labels.get(label) {
-                        self.instruction_pointer = *index;
+                        self.instruction_pointer = *index + 1;
 
                         return Ok(());
                     }
@@ -918,7 +915,7 @@ impl Interpreter {
                 }
                 if let Some(ParamKind::Label(label)) = &instr.param {
                     if let Some(index) = self.labels.get(label) {
-                        self.instruction_pointer = *index;
+                        self.instruction_pointer = *index + 1;
 
                         return Ok(());
                     }
@@ -936,7 +933,7 @@ impl Interpreter {
                 }
                 if let Some(ParamKind::Label(label)) = &instr.param {
                     if let Some(index) = self.labels.get(label) {
-                        self.instruction_pointer = *index;
+                        self.instruction_pointer = *index + 1;
 
                         return Ok(());
                     }
@@ -948,12 +945,18 @@ impl Interpreter {
             }
             CommandKind::Return => {
                 if let Some(frame) = self.call_stack.pop() {
-                    self.instruction_pointer = frame;
+                    self.instruction_pointer = frame + 1;
+
+                    return Ok(());
                 }
 
                 InterpretErrorKind::StackUnderflow(instr).throw()
             }
-            CommandKind::Exit => Ok(()),
+            CommandKind::Exit => {
+                self.done = true;
+
+                Ok(())
+            }
             _ => InterpretErrorKind::ParseLogicError(instr).throw(),
         }
     }
@@ -973,6 +976,7 @@ impl Interpreter {
                     }
                     if let Some(character) = char::from_u32(character as u32) {
                         print!("{}", character);
+                        stdout().flush()?;
 
                         return Ok(());
                     }
@@ -983,37 +987,36 @@ impl Interpreter {
             CommandKind::OutInteger => {
                 if let Some(number) = self.stack.pop() {
                     print!("{}", number);
+                    stdout().flush()?;
 
                     return Ok(());
                 }
 
                 InterpretErrorKind::StackUnderflow(instr).throw()
             }
-            CommandKind::ReadCharacter => {
-                let mut input_text = String::new();
-                io::stdin().read_line(&mut input_text)?;
-                if input_text.len() != 2 {
-                    return InterpretErrorKind::StdinError(instr, input_text).throw();
-                }
+            CommandKind::ReadCharacter => InterpretErrorKind::StdinError(instr).throw(),
+            CommandKind::ReadInteger => {
+                if let Some(addr) = self.stack.pop() {
+                    if addr < 0 || addr as usize >= self.heap.len() {
+                        return InterpretErrorKind::NumberOutOfBoundsError(
+                            instr,
+                            addr,
+                            0,
+                            self.heap.len() as i32 - 1,
+                        )
+                        .throw();
+                    }
+                    let mut input_text = String::new();
+                    stdin().read_line(&mut input_text)?;
 
-                let input_text = input_text.trim();
-                if let Some(input) = input_text.chars().next() {
-                    self.stack.push(input as i32);
+                    let trimmed = input_text.trim();
+                    let num = trimmed.parse::<i32>()?;
+                    self.heap[addr as usize] = num;
 
                     return Ok(());
                 }
 
-                InterpretErrorKind::StdinError(instr, input_text.to_string()).throw()
-            }
-            CommandKind::ReadInteger => {
-                let mut input_text = String::new();
-                io::stdin().read_line(&mut input_text)?;
-
-                let trimmed = input_text.trim();
-                let num = trimmed.parse::<i32>()?;
-                self.stack.push(num);
-
-                Ok(())
+                InterpretErrorKind::StdinError(instr).throw()
             }
             _ => InterpretErrorKind::ParseLogicError(instr).throw(),
         }
@@ -1022,6 +1025,7 @@ impl Interpreter {
     pub fn exec(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
         if self.debug {
             dbg!(&self.stack);
+            dbg!(&self.call_stack);
             dbg!(&self.instruction_pointer);
             dbg!(&self.instructions[self.instruction_pointer]);
         }
@@ -1325,7 +1329,7 @@ mod tests {
 
         interpreter.run()?;
 
-        assert_eq!(interpreter.stack, vec![3]);
+        assert_eq!(interpreter.stack, vec![4]);
         assert!(interpreter.heap.is_empty());
         assert!(interpreter.labels.is_empty());
 
@@ -1344,8 +1348,18 @@ mod tests {
     }
 
     #[test]
+    fn interpret_flow() -> Result<(), Box<dyn Error>> {
+        let mut interpreter = Interpreter::new("ws/interpret_flow.ws", 0, true, true)?;
+
+        interpreter.run()?;
+        assert_eq!(interpreter.stack, vec![]);
+
+        Ok(())
+    }
+
+    #[test]
     fn interpret_io() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/hello_world.ws", 0, true, true)?;
+        let mut interpreter = Interpreter::new("ws/interpret_io.ws", 0, true, true)?;
 
         interpreter.run()?;
 
