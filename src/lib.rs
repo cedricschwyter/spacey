@@ -31,7 +31,7 @@ pub struct Interpreter {
 
 #[derive(Debug)]
 enum ParseErrorKind {
-    InvalidToken(usize, Vec<u8>),
+    InvalidToken(usize, Vec<u8>, Vec<u8>),
     UnexpectedToken(usize, u8, Vec<u8>),
 }
 
@@ -44,10 +44,11 @@ impl ParseErrorKind {
                 tokens.iter().map(|b| *b as char).collect::<Vec<_>>(),
                 *token as char
             ),
-            ParseErrorKind::InvalidToken(pos, tokens) => format!(
-                "unexpected token at position {}, expected one of {:?}",
+            ParseErrorKind::InvalidToken(pos, tokens, rest) => format!(
+                "unexpected token at position {}, expected one of {:?}. rest of file was: {:?}",
                 pos,
                 tokens.iter().map(|b| *b as char).collect::<Vec<_>>(),
+                rest.iter().map(|b| *b as char).collect::<Vec<_>>()
             ),
         };
         Err(Box::new(ParseError { msg, kind: self }))
@@ -203,13 +204,14 @@ impl Parser {
 
     fn next(&mut self) -> Option<u8> {
         let tokens = vec![SPACE, TAB, LINE_FEED];
-        while self.token_index < self.source.len() - 1 {
-            self.token_index += 1;
-            let token = self.source[self.token_index - 1];
+        while self.token_index < self.source.len() {
+            let token = self.source[self.token_index];
             if tokens.contains(&token) {
+                self.token_index += 1;
                 return Some(token);
             }
         }
+
         None
     }
 
@@ -270,7 +272,14 @@ impl Parser {
                         ),
                     };
                 }
-                Some(ParseErrorKind::InvalidToken(self.token_index, vec![SPACE, LINE_FEED]).throw())
+                Some(
+                    ParseErrorKind::InvalidToken(
+                        self.token_index,
+                        vec![SPACE, LINE_FEED],
+                        self.source[self.token_index..].to_vec(),
+                    )
+                    .throw(),
+                )
             }
             LINE_FEED => {
                 if let Some(val) = self.next() {
@@ -289,8 +298,12 @@ impl Parser {
                     };
                 }
                 Some(
-                    ParseErrorKind::InvalidToken(self.token_index, vec![SPACE, TAB, LINE_FEED])
-                        .throw(),
+                    ParseErrorKind::InvalidToken(
+                        self.token_index,
+                        vec![SPACE, TAB, LINE_FEED],
+                        self.source[self.token_index..].to_vec(),
+                    )
+                    .throw(),
                 )
             }
             _ => Some(
@@ -321,8 +334,12 @@ impl Parser {
                 }
 
                 Some(
-                    ParseErrorKind::InvalidToken(self.token_index, vec![SPACE, TAB, LINE_FEED])
-                        .throw(),
+                    ParseErrorKind::InvalidToken(
+                        self.token_index,
+                        vec![SPACE, TAB, LINE_FEED],
+                        self.source[self.token_index..].to_vec(),
+                    )
+                    .throw(),
                 )
             }
             TAB => {
@@ -331,12 +348,23 @@ impl Parser {
                         SPACE => Some(Ok(CommandKind::IntegerDivision)),
                         TAB => Some(Ok(CommandKind::Modulo)),
                         _ => Some(
-                            ParseErrorKind::InvalidToken(self.token_index, vec![SPACE, TAB])
-                                .throw(),
+                            ParseErrorKind::InvalidToken(
+                                self.token_index,
+                                vec![SPACE, TAB],
+                                self.source[self.token_index..].to_vec(),
+                            )
+                            .throw(),
                         ),
                     };
                 }
-                Some(ParseErrorKind::InvalidToken(self.token_index, vec![SPACE, TAB]).throw())
+                Some(
+                    ParseErrorKind::InvalidToken(
+                        self.token_index,
+                        vec![SPACE, TAB],
+                        self.source[self.token_index..].to_vec(),
+                    )
+                    .throw(),
+                )
             }
             _ => Some(
                 ParseErrorKind::UnexpectedToken(self.token_index, val, vec![SPACE, TAB]).throw(),
@@ -349,7 +377,14 @@ impl Parser {
         match val {
             SPACE => Some(Ok(CommandKind::StoreHeap)),
             TAB => Some(Ok(CommandKind::RetrieveHeap)),
-            _ => Some(ParseErrorKind::InvalidToken(self.token_index, vec![SPACE, TAB]).throw()),
+            _ => Some(
+                ParseErrorKind::InvalidToken(
+                    self.token_index,
+                    vec![SPACE, TAB],
+                    self.source[self.token_index..].to_vec(),
+                )
+                .throw(),
+            ),
         }
     }
 
@@ -374,8 +409,12 @@ impl Parser {
                 }
 
                 Some(
-                    ParseErrorKind::InvalidToken(self.token_index, vec![SPACE, TAB, LINE_FEED])
-                        .throw(),
+                    ParseErrorKind::InvalidToken(
+                        self.token_index,
+                        vec![SPACE, TAB, LINE_FEED],
+                        self.source[self.token_index..].to_vec(),
+                    )
+                    .throw(),
                 )
             }
             TAB => {
@@ -394,10 +433,14 @@ impl Parser {
                         ),
                     };
                 }
-
+                dbg!("here");
                 Some(
-                    ParseErrorKind::InvalidToken(self.token_index, vec![SPACE, TAB, LINE_FEED])
-                        .throw(),
+                    ParseErrorKind::InvalidToken(
+                        self.token_index,
+                        vec![SPACE, TAB, LINE_FEED],
+                        self.source[self.token_index..].to_vec(),
+                    )
+                    .throw(),
                 )
             }
             LINE_FEED => {
@@ -562,7 +605,14 @@ impl Parser {
                         ),
                     };
                 }
-                Some(ParseErrorKind::InvalidToken(self.token_index, vec![SPACE, TAB]).throw())
+                Some(
+                    ParseErrorKind::InvalidToken(
+                        self.token_index,
+                        vec![SPACE, TAB],
+                        self.source[self.token_index..].to_vec(),
+                    )
+                    .throw(),
+                )
             }
         }
     }
@@ -1029,14 +1079,17 @@ impl Interpreter {
             dbg!(&self.instruction_pointer);
             dbg!(&self.instructions[self.instruction_pointer]);
         }
-        self.instruction_pointer += 1;
-        match instr.imp {
+        let res = match instr.imp {
             ImpKind::Stack => self.stack(instr),
             ImpKind::Arithmetic => self.arithmetic(instr),
             ImpKind::Heap => self.heap(instr),
             ImpKind::Flow => self.flow(instr),
             ImpKind::IO => self.io(instr),
-        }
+        };
+
+        self.instruction_pointer += 1;
+
+        res
     }
 }
 
@@ -1352,7 +1405,7 @@ mod tests {
         let mut interpreter = Interpreter::new("ws/interpret_flow.ws", 0, true, true)?;
 
         interpreter.run()?;
-        assert_eq!(interpreter.stack, vec![]);
+        assert_eq!(interpreter.stack, vec![0]);
 
         Ok(())
     }
