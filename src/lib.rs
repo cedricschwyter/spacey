@@ -1407,7 +1407,7 @@ mod tests {
         let mut interpreter = Interpreter::new("ws/interpret_flow.ws", 0, true, true)?;
 
         interpreter.run()?;
-        assert_eq!(interpreter.stack, vec![0]);
+        assert_eq!(interpreter.stack, vec![]);
 
         Ok(())
     }
