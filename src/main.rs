@@ -23,6 +23,22 @@ fn args() -> ArgMatches {
                 .required(false)
                 .help("the size of the heap address space (each heap address stores one i32)"),
         )
+        .arg(
+            Arg::new("ir")
+                .short('i')
+                .long("ir")
+                .required(false)
+                .takes_value(false)
+                .help("prints intermediate representation of instructions"),
+        )
+        .arg(
+            Arg::new("debug")
+                .short('d')
+                .long("debug")
+                .takes_value(false)
+                .required(false)
+                .help("prints debug information after each executed instruction"),
+        )
         .get_matches()
 }
 
@@ -33,11 +49,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         Some(size) => size.parse()?,
         None => 524288,
     };
-    let mut interpreter = Interpreter::new(file_name, heap_size)?;
+    let ir = args.is_present("ir");
+    let debug = args.is_present("debug");
+    let mut interpreter = Interpreter::new(file_name, heap_size, ir, debug)?;
 
-    while let Some(instr) = interpreter.next_instruction() {
-        dbg!(&instr);
-        interpreter.exec(instr)?;
+    if !ir {
+        interpreter.run()?;
     }
 
     Ok(())
