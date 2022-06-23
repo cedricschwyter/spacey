@@ -705,7 +705,7 @@ impl Interpreter {
         })
     }
 
-    pub fn next_instruction(&mut self) -> Option<Instruction> {
+    pub fn next_instruction(&self) -> Option<Instruction> {
         if self.done {
             return None;
         }
@@ -727,6 +727,14 @@ impl Interpreter {
         }
 
         Ok(())
+    }
+
+    pub fn reset(&mut self) {
+        self.stack.clear();
+        self.call_stack.clear();
+        self.heap = vec![0; self.heap.len()];
+        self.instruction_pointer = 0;
+        self.done = false;
     }
 
     fn stack(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
@@ -1422,20 +1430,28 @@ mod tests {
     }
 
     #[bench]
-    fn bench_hello_world(b: &mut Bencher) {
+    fn bench_hello_world(b: &mut Bencher) -> Result<(), Box<dyn Error>> {
+        let mut interpreter = Interpreter::new("ws/hello_world.ws", 0, false, false)?;
         b.iter(|| -> Result<(), Box<dyn Error>> {
-            let mut interpreter = Interpreter::new("ws/hello_world.ws", 0, false, false)?;
             interpreter.run()?;
+            interpreter.reset();
+
             Ok(())
         });
+
+        Ok(())
     }
 
     #[bench]
-    fn bench_count(b: &mut Bencher) {
+    fn bench_count(b: &mut Bencher) -> Result<(), Box<dyn Error>> {
+        let mut interpreter = Interpreter::new("ws/count.ws", 0, false, false)?;
         b.iter(|| -> Result<(), Box<dyn Error>> {
-            let mut interpreter = Interpreter::new("ws/count.ws", 0, false, false)?;
             interpreter.run()?;
+            interpreter.reset();
+
             Ok(())
         });
+
+        Ok(())
     }
 }
