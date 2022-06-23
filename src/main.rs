@@ -1,6 +1,7 @@
 use clap::{App, Arg, ArgMatches};
 use spacey::Interpreter;
 use std::error::Error;
+use std::time::Instant;
 
 fn args() -> ArgMatches {
     App::new("spacey")
@@ -39,6 +40,22 @@ fn args() -> ArgMatches {
                 .required(false)
                 .help("prints debug information after each executed instruction"),
         )
+        .arg(
+            Arg::new("debug-heap")
+                .short('m')
+                .long("debug-heap")
+                .takes_value(false)
+                .required(false)
+                .help("prints a heap dump after each executed instruction"),
+        )
+        .arg(
+            Arg::new("quiet")
+                .short('q')
+                .long("quiet")
+                .required(false)
+                .takes_value(false)
+                .help("suppresses all output other than what the whitespace program is producing"),
+        )
         .get_matches()
 }
 
@@ -51,10 +68,38 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
     let ir = args.is_present("ir");
     let debug = args.is_present("debug");
-    let mut interpreter = Interpreter::new(file_name, heap_size, ir, debug)?;
+    let debug_heap = args.is_present("debug-heap");
+    let quiet = args.is_present("quiet");
+    if !quiet {
+        println!(
+        "initializing, loading and parsing the provided source, creating the virtual machine..."
+    );
+    }
+    let start = Instant::now();
+    let mut interpreter = Interpreter::new(file_name, heap_size, ir, debug, debug_heap)?;
+    let end = Instant::now();
+    if !quiet {
+        println!(
+            "initialized in {} ms ({} ns)",
+            end.duration_since(start).as_millis(),
+            end.duration_since(start).as_nanos()
+        );
+    }
 
     if !ir {
+        if !quiet {
+            println!("starting to execute whitespace routine...\n\n");
+        }
+        let start = Instant::now();
         interpreter.run()?;
+        let end = Instant::now();
+        if !quiet {
+            println!(
+                "\n\n\nroutine took {} ms ({} ns)",
+                end.duration_since(start).as_millis(),
+                end.duration_since(start).as_nanos()
+            );
+        }
     }
 
     Ok(())
