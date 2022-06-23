@@ -18,6 +18,8 @@ struct Parser {
     instruction_index: usize,
 }
 
+/// The main component of this crate, obviously.
+/// Handles everything.
 pub struct Interpreter {
     stack: Vec<i32>,
     call_stack: Vec<usize>,
@@ -180,6 +182,9 @@ enum ParamKind {
     Label(String),
 }
 
+/// Intermediate representation for a whitespace instruction. Using the term IR here because I
+/// might turn this crate also into a whitespace compiler in the future.
+/// Contains data as well as metadata about whitespace instructions
 #[derive(Debug, PartialEq, Clone)]
 pub struct Instruction {
     imp: ImpKind,
@@ -663,6 +668,12 @@ impl Iterator for &mut Parser {
 }
 
 impl Interpreter {
+    /// Creates a new interpreter with the given arguments
+    ///
+    /// - `file_name` the path to the whitespace source file on disk
+    /// - `heap_size` the size of the heap address space (each address holds an i32)
+    /// - `ir` print the IR of the parsed source file to stdout
+    /// - `debug` print debugging information to stdout when executing an instruction
     pub fn new(
         file_name: &str,
         heap_size: usize,
@@ -705,6 +716,8 @@ impl Interpreter {
         })
     }
 
+    /// Returns the next instruction to be executed in a `Some` variant. None if the program has
+    /// reached its end.
     pub fn next_instruction(&self) -> Option<Instruction> {
         if self.done {
             return None;
@@ -716,6 +729,7 @@ impl Interpreter {
         None
     }
 
+    /// Executes all instructions - runs the program.
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
         while let Some(instr) = self.next_instruction() {
             self.exec(instr)?;
@@ -729,6 +743,7 @@ impl Interpreter {
         Ok(())
     }
 
+    /// Resets the internal interpreter state/the VM without re-parsing the source file
     pub fn reset(&mut self) {
         self.stack.clear();
         self.call_stack.clear();
@@ -1082,6 +1097,9 @@ impl Interpreter {
         }
     }
 
+    /// Executes a single instruction in the interpreter
+    ///
+    /// `instr` - the instruction to execute
     pub fn exec(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
         if self.debug {
             dbg!(&self.stack);
