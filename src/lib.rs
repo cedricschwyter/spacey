@@ -1,5 +1,6 @@
 #![feature(test)]
 
+use getch::Getch;
 use memmap::Mmap;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -1055,7 +1056,7 @@ impl Interpreter {
                         .throw();
                     }
                     if let Some(character) = char::from_u32(character as u32) {
-                        print!("{}", character);
+                        write!(stdout(), "{}", character)?;
                         stdout().flush()?;
 
                         return Ok(());
@@ -1066,7 +1067,7 @@ impl Interpreter {
             }
             CommandKind::OutInteger => {
                 if let Some(number) = self.stack.pop() {
-                    print!("{}", number);
+                    write!(stdout(), "{}", number)?;
                     stdout().flush()?;
 
                     return Ok(());
@@ -1074,7 +1075,32 @@ impl Interpreter {
 
                 InterpretErrorKind::StackUnderflow(instr).throw()
             }
-            CommandKind::ReadCharacter => InterpretErrorKind::StdinError(instr).throw(),
+            CommandKind::ReadCharacter => {
+                if let Some(addr) = self.stack.pop() {
+                    if addr < 0 || addr as usize >= self.heap.len() {
+                        return InterpretErrorKind::NumberOutOfBoundsError(
+                            instr,
+                            addr,
+                            0,
+                            self.heap.len() as i32 - 1,
+                        )
+                        .throw();
+                    }
+
+                    stdout().flush()?;
+                    return match Getch::new().getch() {
+                        Ok(val) => {
+                            self.heap[addr as usize] = val as i32;
+                            write!(stdout(), "{}", char::from_u32(val as u32).unwrap())?;
+                            stdout().flush()?;
+                            Ok(())
+                        }
+                        Err(err) => Err(Box::new(err)),
+                    };
+                }
+
+                InterpretErrorKind::StackUnderflow(instr).throw()
+            }
             CommandKind::ReadInteger => {
                 if let Some(addr) = self.stack.pop() {
                     if addr < 0 || addr as usize >= self.heap.len() {
@@ -1086,6 +1112,7 @@ impl Interpreter {
                         )
                         .throw();
                     }
+                    stdout().flush()?;
                     let mut input_text = String::new();
                     stdin().read_line(&mut input_text)?;
 
