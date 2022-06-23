@@ -206,8 +206,8 @@ impl Parser {
         let tokens = vec![SPACE, TAB, LINE_FEED];
         while self.token_index < self.source.len() {
             let token = self.source[self.token_index];
+            self.token_index += 1;
             if tokens.contains(&token) {
-                self.token_index += 1;
                 return Some(token);
             }
         }
@@ -433,7 +433,6 @@ impl Parser {
                         ),
                     };
                 }
-                dbg!("here");
                 Some(
                     ParseErrorKind::InvalidToken(
                         self.token_index,
@@ -998,7 +997,7 @@ impl Interpreter {
             }
             CommandKind::Return => {
                 if let Some(frame) = self.call_stack.pop() {
-                    self.instruction_pointer = frame + 1;
+                    self.instruction_pointer = frame;
 
                     return Ok(());
                 }
