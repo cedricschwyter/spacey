@@ -16,7 +16,6 @@ const LINE_FEED: u8 = b'\n';
 struct Parser {
     source: Mmap,
     index: usize,
-    last: Option<Result<Instruction, Box<dyn Error>>>,
 }
 
 #[derive(Debug)]
@@ -226,17 +225,17 @@ impl Parser {
         let source = unsafe { Mmap::map(&file)? };
         let index = 0;
 
-        Ok(Parser {
-            source,
-            index,
-            last: None,
-        })
+        Ok(Parser { source, index })
     }
 
     fn next(&mut self) -> Option<u8> {
-        if self.index < self.source.len() - 1 {
+        let tokens = vec![SPACE, TAB, LINE_FEED];
+        while self.index < self.source.len() - 1 {
             self.index += 1;
-            return Some(self.source[self.index - 1]);
+            let token = self.source[self.index - 1];
+            if tokens.contains(&token) {
+                return Some(token);
+            }
         }
         None
     }
@@ -502,7 +501,7 @@ impl Parser {
         let mut res = 0;
         let mut place = 0;
         while let Some(val) = places.pop() {
-            res += val * (2_i32.pow(place));
+            res += val << place;
             place += 1;
         }
 
@@ -596,29 +595,20 @@ impl Iterator for &mut Parser {
     type Item = Result<Instruction, Box<dyn Error>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let instr = self.instruction();
-        if let Some(instr) = instr {
-            if let Ok(val) = &instr {
-                self.last = Some(Ok(val.clone()))
-            }
-            return Some(instr);
-        }
-        if let Some(Ok(instr)) = &self.last {
-            if instr.cmd != CommandKind::Exit {
-                return Some(InterpretErrorKind::NoTermination(instr.clone()).throw());
-            }
-        }
-
-        None
+        self.instruction()
     }
 }
 
 impl Interpreter {
-    pub fn new(file_name: &str, heap_size: usize) -> Result<Interpreter, Box<dyn Error>> {
+    pub fn new(file_name: &str, heap_size: usize, ir: bool) -> Result<Interpreter, Box<dyn Error>> {
         let mut parser = Parser::new(file_name)?;
         let mut instructions = vec![];
         for instr in &mut parser {
-            instructions.push(instr?);
+            let instr = instr?;
+            if ir {
+                dbg!(&instr);
+            }
+            instructions.push(instr);
         }
         let stack = vec![StackFrame::new(0)];
         let heap = vec![0; heap_size];
@@ -654,6 +644,11 @@ impl Interpreter {
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
         while let Some(instr) = self.next_instruction() {
             self.exec(instr)?;
+        }
+
+        let last = self.instructions[self.instruction_pointer - 1].clone();
+        if last.cmd != CommandKind::Exit {
+            return InterpretErrorKind::NoTermination(last).throw();
         }
 
         Ok(())
@@ -1067,7 +1062,7 @@ mod tests {
 
     #[test]
     fn parse_stack() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/parse_stack.ws", 0)?;
+        let mut interpreter = Interpreter::new("ws/parse_stack.ws", 0, true)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::Stack,
@@ -1118,7 +1113,7 @@ mod tests {
 
     #[test]
     fn parse_arithmetic() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/parse_arithmetic.ws", 0)?;
+        let mut interpreter = Interpreter::new("ws/parse_arithmetic.ws", 0, true)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::Arithmetic,
@@ -1163,7 +1158,7 @@ mod tests {
 
     #[test]
     fn parse_heap() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/parse_heap.ws", 0)?;
+        let mut interpreter = Interpreter::new("ws/parse_heap.ws", 0, true)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::Heap,
@@ -1190,7 +1185,7 @@ mod tests {
 
     #[test]
     fn parse_flow() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/parse_flow.ws", 0)?;
+        let mut interpreter = Interpreter::new("ws/parse_flow.ws", 0, true)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::Flow,
@@ -1241,7 +1236,7 @@ mod tests {
 
     #[test]
     fn parse_io() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/parse_io.ws", 0)?;
+        let mut interpreter = Interpreter::new("ws/parse_io.ws", 0, true)?;
         let results = vec![
             Instruction {
                 imp: ImpKind::IO,
@@ -1280,7 +1275,7 @@ mod tests {
 
     #[test]
     fn interpret_stack() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/interpret_stack.ws", 0)?;
+        let mut interpreter = Interpreter::new("ws/interpret_stack.ws", 0, true)?;
 
         interpreter.run()?;
 
@@ -1293,7 +1288,7 @@ mod tests {
 
     #[test]
     fn interpret_arithmetic() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/interpret_arithmetic.ws", 0)?;
+        let mut interpreter = Interpreter::new("ws/interpret_arithmetic.ws", 0, true)?;
 
         interpreter.run()?;
 
@@ -1306,7 +1301,7 @@ mod tests {
 
     #[test]
     fn interpret_heap() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/interpret_heap.ws", 1)?;
+        let mut interpreter = Interpreter::new("ws/interpret_heap.ws", 1, true)?;
 
         interpreter.run()?;
 
@@ -1317,7 +1312,7 @@ mod tests {
 
     #[test]
     fn interpret_io() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/hello_world.ws", 0)?;
+        let mut interpreter = Interpreter::new("ws/hello_world.ws", 0, true)?;
 
         interpreter.run()?;
 
@@ -1327,7 +1322,7 @@ mod tests {
     #[bench]
     fn bench_interpret(b: &mut Bencher) {
         b.iter(|| -> Result<(), Box<dyn Error>> {
-            let mut interpreter = Interpreter::new("ws/hello_world.ws", 0)?;
+            let mut interpreter = Interpreter::new("ws/hello_world.ws", 0, true)?;
             interpreter.run()?;
             Ok(())
         });
