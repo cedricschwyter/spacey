@@ -1317,7 +1317,7 @@ mod tests {
 
     #[test]
     fn interpret_io() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/interpret_io.ws", 0)?;
+        let mut interpreter = Interpreter::new("ws/hello_world.ws", 0)?;
 
         interpreter.run()?;
 
@@ -1327,7 +1327,7 @@ mod tests {
     #[bench]
     fn bench_interpret(b: &mut Bencher) {
         b.iter(|| -> Result<(), Box<dyn Error>> {
-            let mut interpreter = Interpreter::new("ws/interpret_io.ws", 0)?;
+            let mut interpreter = Interpreter::new("ws/hello_world.ws", 0)?;
             interpreter.run()?;
             Ok(())
         });
