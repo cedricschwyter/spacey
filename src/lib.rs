@@ -622,8 +622,16 @@ impl Interpreter {
         }
         let stack = vec![StackFrame::new(0)];
         let heap = vec![0; heap_size];
-        let labels = HashMap::new();
+        let mut labels = HashMap::new();
         let instruction_pointer = 0;
+
+        for i in 0..instructions.len() {
+            if instructions[i].cmd == CommandKind::Mark {
+                if let Some(ParamKind::Label(label)) = instructions[i].param.clone() {
+                    labels.insert(label, i);
+                }
+            }
+        }
 
         Ok(Interpreter {
             instructions,
