@@ -4,6 +4,8 @@ version = "1.0.0"
 edition = "2021"
 description = "a tiny yet performant whitespace vmm/interpreter"
 license = "GPL-3.0-or-later"
+documentation = "https://docs.rs/spacey"
+repository = "https://github.com/D3PSI/spacey"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
