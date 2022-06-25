@@ -1,6 +1,14 @@
 # spacey
 a tiny whitespace interpreter/virtual machine in rust
 
+## project roadmap
+- [x] whitespace parser
+- [x] whitespace virtual machine
+- [x] usable exposed crate API
+- [x] spacey executable
+- [ ] LLVM backend to compile to standalone executable
+- [ ] termion/ncurses frontend with debugging capabilities
+
 ## building and running
 make sure you have rust and the rust package manager `cargo` installed on your system. if not, the easiest way to do so is to install rust via [rustup.rs](https://rustup.rs).
 
