@@ -96,9 +96,9 @@ impl Interpreter {
         let instruction_pointer = 0;
         let done = false;
 
-        for i in 0..instructions.len() {
-            if instructions[i].cmd == CommandKind::Mark {
-                if let Some(ParamKind::Label(label)) = instructions[i].param.clone() {
+        for (i, instr) in instructions.iter().enumerate() {
+            if instr.cmd == CommandKind::Mark {
+                if let Some(ParamKind::Label(label)) = instr.param.clone() {
                     labels.insert(label, i);
                 }
             }
@@ -208,7 +208,7 @@ impl Interpreter {
                 InterpretErrorKind::StackUnderflow(instr).throw()
             }
             CommandKind::DiscardStack => {
-                if let Some(_) = self.stack.pop() {
+                if self.stack.pop().is_some() {
                     return Ok(());
                 }
 
