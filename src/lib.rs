@@ -1,5 +1,3 @@
-#![feature(test)]
-
 pub mod interpret;
 pub mod parse;
 

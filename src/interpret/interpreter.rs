@@ -17,6 +17,7 @@ pub struct Interpreter {
     instructions: Vec<Instruction>,
     debug: bool,
     debug_heap: bool,
+    suppress_output: bool,
     done: bool,
 }
 
@@ -79,6 +80,7 @@ impl Interpreter {
         ir: bool,
         debug: bool,
         debug_heap: bool,
+        suppress_output: bool,
     ) -> Result<Interpreter, Box<dyn Error>> {
         let mut parser = Parser::new(file_name)?;
         let mut instructions = vec![];
@@ -113,6 +115,7 @@ impl Interpreter {
             instruction_pointer,
             debug,
             debug_heap,
+            suppress_output,
             done,
         })
     }
@@ -450,6 +453,9 @@ impl Interpreter {
                         )
                         .throw();
                     }
+                    if self.suppress_output {
+                        return Ok(());
+                    }
                     if let Some(character) = char::from_u32(character as u32) {
                         write!(stdout(), "{}", character)?;
                         stdout().flush()?;
@@ -462,6 +468,9 @@ impl Interpreter {
             }
             CommandKind::OutInteger => {
                 if let Some(number) = self.stack.pop() {
+                    if self.suppress_output {
+                        return Ok(());
+                    }
                     write!(stdout(), "{}", number)?;
                     stdout().flush()?;
 
@@ -563,15 +572,12 @@ impl Interpreter {
 
 #[cfg(test)]
 mod tests {
-    extern crate test;
-    use test::Bencher;
-
     use super::Interpreter;
     use std::error::Error;
 
     #[test]
     fn interpret_stack() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/interpret_stack.ws", 0, true, true, true)?;
+        let mut interpreter = Interpreter::new("ws/interpret_stack.ws", 0, true, true, true, true)?;
 
         interpreter.run()?;
 
@@ -584,7 +590,8 @@ mod tests {
 
     #[test]
     fn interpret_arithmetic() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/interpret_arithmetic.ws", 0, true, true, true)?;
+        let mut interpreter =
+            Interpreter::new("ws/interpret_arithmetic.ws", 0, true, true, true, true)?;
 
         interpreter.run()?;
 
@@ -597,7 +604,7 @@ mod tests {
 
     #[test]
     fn interpret_heap() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/interpret_heap.ws", 1, true, true, true)?;
+        let mut interpreter = Interpreter::new("ws/interpret_heap.ws", 1, true, true, true, true)?;
 
         interpreter.run()?;
 
@@ -608,7 +615,7 @@ mod tests {
 
     #[test]
     fn interpret_flow() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/interpret_flow.ws", 0, true, true, true)?;
+        let mut interpreter = Interpreter::new("ws/interpret_flow.ws", 0, true, true, true, true)?;
 
         interpreter.run()?;
         assert_eq!(interpreter.stack, vec![]);
@@ -618,35 +625,9 @@ mod tests {
 
     #[test]
     fn interpret_io() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/interpret_io.ws", 0, true, true, true)?;
+        let mut interpreter = Interpreter::new("ws/interpret_io.ws", 0, true, true, true, true)?;
 
         interpreter.run()?;
-
-        Ok(())
-    }
-
-    #[bench]
-    fn bench_hello_world(b: &mut Bencher) -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/hello_world.ws", 0, false, false, false)?;
-        b.iter(|| -> Result<(), Box<dyn Error>> {
-            interpreter.run()?;
-            interpreter.reset();
-
-            Ok(())
-        });
-
-        Ok(())
-    }
-
-    #[bench]
-    fn bench_count(b: &mut Bencher) -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/count.ws", 0, false, false, false)?;
-        b.iter(|| -> Result<(), Box<dyn Error>> {
-            interpreter.run()?;
-            interpreter.reset();
-
-            Ok(())
-        });
 
         Ok(())
     }

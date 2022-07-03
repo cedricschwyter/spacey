@@ -76,7 +76,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     );
     }
     let start = Instant::now();
-    let mut interpreter = Interpreter::new(file_name, heap_size, ir, debug, debug_heap)?;
+    let mut interpreter = Interpreter::new(file_name, heap_size, ir, debug, debug_heap, false)?;
     let end = Instant::now();
     if !quiet {
         println!(
