@@ -97,15 +97,17 @@ impl Interpreter {
 
         for (i, instr) in instructions.iter().enumerate() {
             if instr.cmd == CommandKind::Mark {
-                if let Some(ParamKind::Label(label, _)) = &instr.param {
+                if let Some(ParamKind::Label(label, _)) = instr.param.clone() {
                     labels.insert(label, i);
                 }
             }
         }
 
-        for (i, instr) in instructions.iter_mut().enumerate() {
-            if let Some(ParamKind::Label(label, _)) = &instr.param {
-                instr.param = Some(ParamKind::Label(label.clone(), i));
+        for instr in &mut instructions {
+            if let Some(ParamKind::Label(label, _)) = instr.param.clone() {
+                if let Some(index) = labels.get(&label) {
+                    instr.param = Some(ParamKind::Label(label, *index));
+                }
             }
         }
 
