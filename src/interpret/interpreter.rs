@@ -6,13 +6,14 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
 use std::io::{stdin, stdout, Write};
+use std::rc::Rc;
 
 /// The root component for the virtual machine
 pub struct Interpreter {
     stack: Vec<i32>,
     call_stack: Vec<usize>,
     heap: Vec<i32>,
-    labels: HashMap<String, usize>,
+    labels: HashMap<Rc<str>, usize>,
     instruction_pointer: usize,
     instructions: Vec<Instruction>,
     debug: bool,
