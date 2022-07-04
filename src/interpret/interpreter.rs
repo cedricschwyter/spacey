@@ -6,14 +6,12 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
 use std::io::{stdin, stdout, Write};
-use std::rc::Rc;
 
 /// The root component for the virtual machine
 pub struct Interpreter {
     stack: Vec<i32>,
     call_stack: Vec<usize>,
     heap: Vec<i32>,
-    labels: HashMap<Rc<str>, usize>,
     instruction_pointer: usize,
     instructions: Vec<Instruction>,
     debug: bool,
@@ -101,9 +99,15 @@ impl Interpreter {
 
         for (i, instr) in instructions.iter().enumerate() {
             if instr.cmd == CommandKind::Mark {
-                if let Some(ParamKind::Label(label)) = instr.param.clone() {
+                if let Some(ParamKind::Label(label, _)) = &instr.param {
                     labels.insert(label, i);
                 }
+            }
+        }
+
+        for (i, instr) in instructions.iter_mut().enumerate() {
+            if let Some(ParamKind::Label(label, _)) = &instr.param {
+                instr.param = Some(ParamKind::Label(label.clone(), i));
             }
         }
 
@@ -112,7 +116,6 @@ impl Interpreter {
             stack,
             call_stack,
             heap,
-            labels,
             instruction_pointer,
             debug,
             debug_heap,
@@ -358,28 +361,20 @@ impl Interpreter {
         match instr.cmd {
             CommandKind::Mark => Ok(()),
             CommandKind::Call => {
-                if let Some(ParamKind::Label(label)) = &instr.param {
-                    if let Some(index) = self.labels.get(label) {
-                        self.call_stack.push(self.instruction_pointer);
-                        self.instruction_pointer = *index;
+                if let Some(ParamKind::Label(_, index)) = &instr.param {
+                    self.call_stack.push(self.instruction_pointer);
+                    self.instruction_pointer = *index;
 
-                        return Ok(());
-                    }
-
-                    return InterpretErrorKind::UnknownLabel(instr).throw();
+                    return Ok(());
                 }
 
                 InterpretErrorKind::ParseLogicError(instr).throw()
             }
             CommandKind::Jump => {
-                if let Some(ParamKind::Label(label)) = &instr.param {
-                    if let Some(index) = self.labels.get(label) {
-                        self.instruction_pointer = *index;
+                if let Some(ParamKind::Label(_, index)) = &instr.param {
+                    self.instruction_pointer = *index;
 
-                        return Ok(());
-                    }
-
-                    return InterpretErrorKind::UnknownLabel(instr).throw();
+                    return Ok(());
                 }
 
                 InterpretErrorKind::ParseLogicError(instr).throw()
@@ -389,14 +384,10 @@ impl Interpreter {
                     if val != 0 {
                         return Ok(());
                     }
-                    if let Some(ParamKind::Label(label)) = &instr.param {
-                        if let Some(index) = self.labels.get(label) {
-                            self.instruction_pointer = *index;
+                    if let Some(ParamKind::Label(_, index)) = &instr.param {
+                        self.instruction_pointer = *index;
 
-                            return Ok(());
-                        }
-
-                        return InterpretErrorKind::UnknownLabel(instr).throw();
+                        return Ok(());
                     }
                     return InterpretErrorKind::StackUnderflow(instr).throw();
                 }
@@ -408,14 +399,10 @@ impl Interpreter {
                     if val >= 0 {
                         return Ok(());
                     }
-                    if let Some(ParamKind::Label(label)) = &instr.param {
-                        if let Some(index) = self.labels.get(label) {
-                            self.instruction_pointer = *index;
+                    if let Some(ParamKind::Label(_, index)) = &instr.param {
+                        self.instruction_pointer = *index;
 
-                            return Ok(());
-                        }
-
-                        return InterpretErrorKind::UnknownLabel(instr).throw();
+                        return Ok(());
                     }
 
                     return InterpretErrorKind::StackUnderflow(instr).throw();
@@ -584,7 +571,6 @@ mod tests {
 
         assert_eq!(interpreter.stack, vec![-1]);
         assert!(interpreter.heap.is_empty());
-        assert!(interpreter.labels.is_empty());
 
         Ok(())
     }
@@ -598,7 +584,6 @@ mod tests {
 
         assert_eq!(interpreter.stack, vec![4]);
         assert!(interpreter.heap.is_empty());
-        assert!(interpreter.labels.is_empty());
 
         Ok(())
     }

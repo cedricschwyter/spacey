@@ -102,7 +102,7 @@ impl CommandKind {
             | CommandKind::Call
             | CommandKind::Jump
             | CommandKind::JumpZero
-            | CommandKind::JumpNegative => Some(ParamKind::Label("".to_string().into())),
+            | CommandKind::JumpNegative => Some(ParamKind::Label("".to_string().into(), 0)),
             _ => None,
         }
     }
@@ -111,7 +111,7 @@ impl CommandKind {
 #[derive(Debug, PartialEq, Clone)]
 pub(crate) enum ParamKind {
     Number(i32),
-    Label(Rc<str>),
+    Label(Rc<str>, usize),
 }
 
 /// Intermediate representation for a whitespace instruction. Using the term IR here because I
@@ -528,12 +528,12 @@ impl Parser {
         }
         let result = String::from_utf8(result).ok()?;
 
-        Some(Ok(ParamKind::Label(result.into())))
+        Some(Ok(ParamKind::Label(result.into(), 0)))
     }
 
     fn param(&mut self, kind: ParamKind) -> Option<Result<ParamKind, Box<dyn Error>>> {
         match kind {
-            ParamKind::Label(_) => self.label(),
+            ParamKind::Label(..) => self.label(),
             ParamKind::Number(_) => {
                 if let Some(val) = self.next() {
                     return match val {
@@ -772,35 +772,35 @@ mod tests {
             Instruction {
                 imp: ImpKind::Flow,
                 cmd: CommandKind::Mark,
-                param: Some(ParamKind::Label(" \t \t \t".to_string().into())),
+                param: Some(ParamKind::Label(" \t \t \t".to_string().into(), 0)),
                 token_index: 0,
                 instruction_index: 0,
             },
             Instruction {
                 imp: ImpKind::Flow,
                 cmd: CommandKind::Call,
-                param: Some(ParamKind::Label(" \t \t \t".to_string().into())),
+                param: Some(ParamKind::Label(" \t \t \t".to_string().into(), 0)),
                 token_index: 10,
                 instruction_index: 1,
             },
             Instruction {
                 imp: ImpKind::Flow,
                 cmd: CommandKind::Jump,
-                param: Some(ParamKind::Label(" \t \t \t".to_string().into())),
+                param: Some(ParamKind::Label(" \t \t \t".to_string().into(), 0)),
                 token_index: 20,
                 instruction_index: 2,
             },
             Instruction {
                 imp: ImpKind::Flow,
                 cmd: CommandKind::JumpZero,
-                param: Some(ParamKind::Label(" \t \t \t".to_string().into())),
+                param: Some(ParamKind::Label(" \t \t \t".to_string().into(), 0)),
                 token_index: 30,
                 instruction_index: 3,
             },
             Instruction {
                 imp: ImpKind::Flow,
                 cmd: CommandKind::JumpNegative,
-                param: Some(ParamKind::Label(" \t \t \t".to_string().into())),
+                param: Some(ParamKind::Label(" \t \t \t".to_string().into(), 0)),
                 token_index: 40,
                 instruction_index: 4,
             },

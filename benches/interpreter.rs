@@ -8,7 +8,6 @@ pub fn single_instruction_with_param_benchmark(c: &mut Criterion) {
     c.bench_function("single instruction with param", |b| {
         b.iter(|| -> Result<(), Box<dyn Error>> {
             interpreter.run()?;
-            interpreter.reset();
 
             Ok(())
         })
