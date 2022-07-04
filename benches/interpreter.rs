@@ -76,6 +76,18 @@ pub fn count_benchmark(c: &mut Criterion) {
     });
 }
 
+pub fn primes_benchmark(c: &mut Criterion) {
+    let mut interpreter = Interpreter::new("ws/primes.ws", 0, false, false, false, true).unwrap();
+    c.bench_function("primes", |b| {
+        b.iter(|| -> Result<(), Box<dyn Error>> {
+            interpreter.run()?;
+            interpreter.reset();
+
+            Ok(())
+        })
+    });
+}
+
 criterion_group!(
     interpreter,
     count_benchmark,
@@ -83,6 +95,7 @@ criterion_group!(
     hello_world_of_spaces_benchmark,
     sieve_benchmark,
     reset_vm_benchmark,
-    single_instruction_with_param_benchmark
+    single_instruction_with_param_benchmark,
+    primes_benchmark
 );
 criterion_main!(interpreter);
