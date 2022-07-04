@@ -26,7 +26,6 @@ enum InterpretErrorKind {
     StackUnderflow(Instruction),
     NumberOutOfBoundsError(Instruction, i32, i32, i32),
     NoTermination(Instruction),
-    UnknownLabel(Instruction),
     StdinError(Instruction),
 }
 
@@ -43,7 +42,6 @@ impl InterpretErrorKind {
             InterpretErrorKind::StackUnderflow(instr) => format!("stack is empty - failed executing: {:?}", instr),
             InterpretErrorKind::NumberOutOfBoundsError(instr, num, low, high) => format!("number is out of bounds for: {:?}, expected in the closed interval bounded by {} and {}, but was {}", instr, low, high, num),
             InterpretErrorKind::NoTermination(instr) => format!("no termination instruction after last executed instruction: {:?}", instr),
-            InterpretErrorKind::UnknownLabel(instr) => format!("label is not defined, failing instruction: {:?}", instr),
             InterpretErrorKind::StdinError(instr) => format!("stdin error when executing: {:?}", instr)
         };
         Err(Box::new(InterpretError { msg, kind: self }))
