@@ -34,4 +34,4 @@ execute whitespace-files like:
 cargo run --release -q -- -f ws/hello_world.ws
 ```
 
-*data extrapolated from benchmark computing the `ws/primes.ws` example (`cargo bench`), with suppressed IO
+*data extrapolated from single-instruction benchmark (`cargo bench`), which executes a single `PushStack` instruction
