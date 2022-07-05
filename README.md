@@ -34,4 +34,4 @@ execute whitespace-files like:
 cargo run --release -q -- -f ws/hello_world.ws
 ```
 
-*data extrapolated from single-instruction benchmark (`cargo bench`), which executes a single `PushStack` instruction. Benchmark run on a single Intel i7-7700K CPU core clocked at 5.1 GHz. This measurement is statistically significant because it was made with the `criterion.rs` statistical benchmarking suite
+*data extrapolated from single-instruction benchmark (`cargo bench`), which executes a single `PushStack` followed by an `Exit` instruction. Benchmark run on a single Intel i7-7700K CPU core clocked at 5.1 GHz. This measurement is statistically significant because it was made with the `criterion.rs` statistical benchmarking suite
