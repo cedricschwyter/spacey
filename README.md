@@ -33,3 +33,5 @@ execute whitespace-files like:
 ```bash
 cargo run --release -q -- -f ws/hello_world.ws
 ```
+
+*data extrapolated from benchmark computing the `ws/primes.ws` example (`cargo bench`), with suppressed IO
