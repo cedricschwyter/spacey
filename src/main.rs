@@ -1,5 +1,5 @@
 use clap::{App, Arg, ArgMatches};
-use spacey::Interpreter;
+use spacey::{Interpreter, InterpreterConfig};
 use std::error::Error;
 use std::time::Instant;
 
@@ -76,7 +76,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     );
     }
     let start = Instant::now();
-    let mut interpreter = Interpreter::new(file_name, heap_size, ir, debug, debug_heap, false)?;
+    let config = InterpreterConfig::new(file_name, heap_size, ir, debug, debug_heap, false);
+    let mut interpreter = Interpreter::new(config)?;
     let end = Instant::now();
     if !quiet {
         println!(

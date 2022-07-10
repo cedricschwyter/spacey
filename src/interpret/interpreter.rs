@@ -7,17 +7,153 @@ use std::error::Error;
 use std::fmt::Display;
 use std::io::{stdin, stdout, Write};
 
+const DEFAULT_HEAP_SIZE: usize = 524288;
+
 /// The root component for the virtual machine
-pub struct Interpreter {
+pub struct Interpreter<'a> {
+    config: InterpreterConfig<'a>,
     stack: Vec<i32>,
     call_stack: Vec<usize>,
     heap: Vec<i32>,
     instruction_pointer: usize,
     instructions: Vec<Instruction>,
+    done: bool,
+}
+
+/// Configuration options for the interpreter
+pub struct InterpreterConfig<'a> {
+    file_name: &'a str,
+    heap_size: usize,
+    ir: bool,
     debug: bool,
     debug_heap: bool,
     suppress_output: bool,
-    done: bool,
+}
+
+impl InterpreterConfig<'_> {
+    /// Creates a new interpreter config with the given arguments
+    ///
+    /// - `file_name` the path to the whitespace source file on disk
+    /// - `heap_size` the size of the heap address space (each address holds an i32)
+    /// - `ir` print the IR of the parsed source file to stdout
+    /// - `debug` print debugging information to stdout when executing an instruction
+    /// - `debug_heap` print heap dump to stdout when executing an instruction
+    pub fn new(
+        file_name: &str,
+        heap_size: usize,
+        ir: bool,
+        debug: bool,
+        debug_heap: bool,
+        suppress_output: bool,
+    ) -> InterpreterConfig {
+        InterpreterConfig {
+            file_name,
+            heap_size,
+            ir,
+            debug,
+            debug_heap,
+            suppress_output,
+        }
+    }
+
+    /// Returns a default interpreter configuration with the default heap size
+    ///
+    /// `file_name` - the name of the source file on disk
+    pub fn default_heap(file_name: &str) -> InterpreterConfig {
+        InterpreterConfig {
+            file_name,
+            heap_size: DEFAULT_HEAP_SIZE,
+            ir: false,
+            debug: false,
+            debug_heap: false,
+            suppress_output: false,
+        }
+    }
+
+    /// Returns a default interpreter configuration with no heap
+    ///
+    /// `file_name` - the name of the source file on disk
+    pub fn default_no_heap(file_name: &str) -> InterpreterConfig {
+        InterpreterConfig {
+            file_name,
+            heap_size: 0,
+            ir: false,
+            debug: false,
+            debug_heap: false,
+            suppress_output: false,
+        }
+    }
+
+    /// Returns a default interpreter configuration with the default heap size, suppressing output
+    ///
+    /// `file_name` - the name of the source file on disk
+    pub fn default_heap_suppressed(file_name: &str) -> InterpreterConfig {
+        InterpreterConfig {
+            file_name,
+            heap_size: DEFAULT_HEAP_SIZE,
+            ir: false,
+            debug: false,
+            debug_heap: false,
+            suppress_output: true,
+        }
+    }
+
+    /// Returns a default interpreter configuration with no heap, suppressing output
+    ///
+    /// `file_name` - the name of the source file on disk
+    pub fn default_no_heap_suppressed(file_name: &str) -> InterpreterConfig {
+        InterpreterConfig {
+            file_name,
+            heap_size: 0,
+            ir: false,
+            debug: false,
+            debug_heap: false,
+            suppress_output: true,
+        }
+    }
+
+    /// Returns a default debug interpreter configuration with the default heap size
+    ///
+    /// `file_name` - the name of the source file on disk
+    pub fn debug_heap(file_name: &str) -> InterpreterConfig {
+        InterpreterConfig {
+            file_name,
+            heap_size: DEFAULT_HEAP_SIZE,
+            ir: false,
+            debug: true,
+            debug_heap: true,
+            suppress_output: false,
+        }
+    }
+
+    /// Returns a default debug interpreter configuration with no heap
+    ///
+    /// `file_name` - the name of the source file on disk
+    pub fn debug_no_heap(file_name: &str) -> InterpreterConfig {
+        InterpreterConfig {
+            file_name,
+            heap_size: 0,
+            ir: false,
+            debug: true,
+            debug_heap: false,
+            suppress_output: false,
+        }
+    }
+
+    /// Returns a default debug interpreter configuration to only compute the intermediate
+    /// representation of the source
+    ///
+    /// `file_name` - the name of the source file on disk
+    pub fn ir(file_name: &str) -> InterpreterConfig {
+        InterpreterConfig {
+            file_name,
+            heap_size: 0,
+            ir: true,
+            debug: false,
+            debug_heap: false,
+            suppress_output: false,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -63,34 +199,23 @@ impl Display for InterpretError {
     }
 }
 
-impl Interpreter {
+impl Interpreter<'_> {
     /// Creates a new interpreter with the given arguments
     ///
-    /// - `file_name` the path to the whitespace source file on disk
-    /// - `heap_size` the size of the heap address space (each address holds an i32)
-    /// - `ir` print the IR of the parsed source file to stdout
-    /// - `debug` print debugging information to stdout when executing an instruction
-    /// - `debug_heap` print heap dump to stdout when executing an instruction
-    pub fn new(
-        file_name: &str,
-        heap_size: usize,
-        ir: bool,
-        debug: bool,
-        debug_heap: bool,
-        suppress_output: bool,
-    ) -> Result<Interpreter, Box<dyn Error>> {
-        let mut parser = Parser::new(file_name)?;
+    /// - `config` The configuration of the interpreter
+    pub fn new(config: InterpreterConfig) -> Result<Interpreter, Box<dyn Error>> {
+        let mut parser = Parser::new(config.file_name)?;
         let mut instructions = vec![];
         for instr in &mut parser {
             let instr = instr?;
-            if ir {
+            if config.ir {
                 dbg!(&instr);
             }
             instructions.push(instr);
         }
         let stack = vec![];
         let call_stack = vec![];
-        let heap = vec![0; heap_size];
+        let heap = vec![0; config.heap_size];
         let mut labels = HashMap::new();
         let instruction_pointer = 0;
         let done = false;
@@ -112,14 +237,12 @@ impl Interpreter {
         }
 
         Ok(Interpreter {
+            config,
             instructions,
             stack,
             call_stack,
             heap,
             instruction_pointer,
-            debug,
-            debug_heap,
-            suppress_output,
             done,
         })
     }
@@ -441,7 +564,7 @@ impl Interpreter {
                         )
                         .throw();
                     }
-                    if self.suppress_output {
+                    if self.config.suppress_output {
                         return Ok(());
                     }
                     if let Some(character) = char::from_u32(character as u32) {
@@ -456,7 +579,7 @@ impl Interpreter {
             }
             CommandKind::OutInteger => {
                 if let Some(number) = self.stack.pop() {
-                    if self.suppress_output {
+                    if self.config.suppress_output {
                         return Ok(());
                     }
                     write!(stdout(), "{}", number)?;
@@ -535,13 +658,13 @@ impl Interpreter {
     ///
     /// `instr` - the instruction to execute
     pub fn exec(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
-        if self.debug {
+        if self.config.debug {
             dbg!(&self.stack);
             dbg!(&self.call_stack);
             dbg!(&self.instruction_pointer);
             dbg!(&self.instructions[self.instruction_pointer]);
         }
-        if self.debug_heap {
+        if self.config.debug_heap {
             dbg!(self.generate_debug_heap_dump());
         }
         let res = match instr.imp {
@@ -560,12 +683,13 @@ impl Interpreter {
 
 #[cfg(test)]
 mod tests {
-    use super::Interpreter;
+    use super::{Interpreter, InterpreterConfig};
     use std::error::Error;
 
     #[test]
     fn interpret_stack() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/interpret_stack.ws", 0, true, true, true, true)?;
+        let config = InterpreterConfig::debug_no_heap("ws/interpret_stack.ws");
+        let mut interpreter = Interpreter::new(config)?;
 
         interpreter.run()?;
 
@@ -577,8 +701,8 @@ mod tests {
 
     #[test]
     fn interpret_arithmetic() -> Result<(), Box<dyn Error>> {
-        let mut interpreter =
-            Interpreter::new("ws/interpret_arithmetic.ws", 0, true, true, true, true)?;
+        let config = InterpreterConfig::debug_no_heap("ws/interpret_arithmetic.ws");
+        let mut interpreter = Interpreter::new(config)?;
 
         interpreter.run()?;
 
@@ -590,7 +714,8 @@ mod tests {
 
     #[test]
     fn interpret_heap() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/interpret_heap.ws", 1, true, true, true, true)?;
+        let config = InterpreterConfig::debug_heap("ws/interpret_heap.ws");
+        let mut interpreter = Interpreter::new(config)?;
 
         interpreter.run()?;
 
@@ -601,7 +726,8 @@ mod tests {
 
     #[test]
     fn interpret_flow() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/interpret_flow.ws", 0, true, true, true, true)?;
+        let config = InterpreterConfig::debug_no_heap("ws/interpret_flow.ws");
+        let mut interpreter = Interpreter::new(config)?;
 
         interpreter.run()?;
         assert_eq!(interpreter.stack, vec![]);
@@ -611,7 +737,8 @@ mod tests {
 
     #[test]
     fn interpret_io() -> Result<(), Box<dyn Error>> {
-        let mut interpreter = Interpreter::new("ws/interpret_io.ws", 0, true, true, true, true)?;
+        let config = InterpreterConfig::debug_no_heap("ws/interpret_io.ws");
+        let mut interpreter = Interpreter::new(config)?;
 
         interpreter.run()?;
 
