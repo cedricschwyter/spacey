@@ -2,6 +2,7 @@ use memmap::Mmap;
 use std::error::Error;
 use std::fmt::Display;
 use std::fs::File;
+use std::rc::Rc;
 
 pub const SPACE: u8 = b' ';
 pub const TAB: u8 = b'\t';
@@ -101,7 +102,7 @@ impl CommandKind {
             | CommandKind::Call
             | CommandKind::Jump
             | CommandKind::JumpZero
-            | CommandKind::JumpNegative => Some(ParamKind::Label("".to_string())),
+            | CommandKind::JumpNegative => Some(ParamKind::Label("".to_string().into(), 0)),
             _ => None,
         }
     }
@@ -110,7 +111,7 @@ impl CommandKind {
 #[derive(Debug, PartialEq, Clone)]
 pub(crate) enum ParamKind {
     Number(i32),
-    Label(String),
+    Label(Rc<str>, usize),
 }
 
 /// Intermediate representation for a whitespace instruction. Using the term IR here because I
@@ -527,12 +528,12 @@ impl Parser {
         }
         let result = String::from_utf8(result).ok()?;
 
-        Some(Ok(ParamKind::Label(result)))
+        Some(Ok(ParamKind::Label(result.into(), 0)))
     }
 
     fn param(&mut self, kind: ParamKind) -> Option<Result<ParamKind, Box<dyn Error>>> {
         match kind {
-            ParamKind::Label(_) => self.label(),
+            ParamKind::Label(..) => self.label(),
             ParamKind::Number(_) => {
                 if let Some(val) = self.next() {
                     return match val {
@@ -771,35 +772,35 @@ mod tests {
             Instruction {
                 imp: ImpKind::Flow,
                 cmd: CommandKind::Mark,
-                param: Some(ParamKind::Label(" \t \t \t".to_string())),
+                param: Some(ParamKind::Label(" \t \t \t".to_string().into(), 0)),
                 token_index: 0,
                 instruction_index: 0,
             },
             Instruction {
                 imp: ImpKind::Flow,
                 cmd: CommandKind::Call,
-                param: Some(ParamKind::Label(" \t \t \t".to_string())),
+                param: Some(ParamKind::Label(" \t \t \t".to_string().into(), 0)),
                 token_index: 10,
                 instruction_index: 1,
             },
             Instruction {
                 imp: ImpKind::Flow,
                 cmd: CommandKind::Jump,
-                param: Some(ParamKind::Label(" \t \t \t".to_string())),
+                param: Some(ParamKind::Label(" \t \t \t".to_string().into(), 0)),
                 token_index: 20,
                 instruction_index: 2,
             },
             Instruction {
                 imp: ImpKind::Flow,
                 cmd: CommandKind::JumpZero,
-                param: Some(ParamKind::Label(" \t \t \t".to_string())),
+                param: Some(ParamKind::Label(" \t \t \t".to_string().into(), 0)),
                 token_index: 30,
                 instruction_index: 3,
             },
             Instruction {
                 imp: ImpKind::Flow,
                 cmd: CommandKind::JumpNegative,
-                param: Some(ParamKind::Label(" \t \t \t".to_string())),
+                param: Some(ParamKind::Label(" \t \t \t".to_string().into(), 0)),
                 token_index: 40,
                 instruction_index: 4,
             },
