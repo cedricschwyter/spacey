@@ -1,4 +1,4 @@
-use crate::parse::{CommandKind, ImpKind, ParamKind};
+use crate::parser::{CommandKind, ImpKind, ParamKind};
 use crate::{Instruction, Parser};
 use getch::Getch;
 use std::collections::BTreeMap;
@@ -688,7 +688,7 @@ mod tests {
 
     #[test]
     fn interpret_stack() -> Result<(), Box<dyn Error>> {
-        let config = InterpreterConfig::debug_no_heap("ws/interpret_stack.ws");
+        let config = InterpreterConfig::default_no_heap_suppressed("ws/interpret_stack.ws");
         let mut interpreter = Interpreter::new(config)?;
 
         interpreter.run()?;
@@ -701,7 +701,7 @@ mod tests {
 
     #[test]
     fn interpret_arithmetic() -> Result<(), Box<dyn Error>> {
-        let config = InterpreterConfig::debug_no_heap("ws/interpret_arithmetic.ws");
+        let config = InterpreterConfig::default_no_heap_suppressed("ws/interpret_arithmetic.ws");
         let mut interpreter = Interpreter::new(config)?;
 
         interpreter.run()?;
@@ -714,7 +714,7 @@ mod tests {
 
     #[test]
     fn interpret_heap() -> Result<(), Box<dyn Error>> {
-        let config = InterpreterConfig::debug_heap("ws/interpret_heap.ws");
+        let config = InterpreterConfig::default_heap_suppressed("ws/interpret_heap.ws");
         let mut interpreter = Interpreter::new(config)?;
 
         interpreter.run()?;
@@ -726,7 +726,7 @@ mod tests {
 
     #[test]
     fn interpret_flow() -> Result<(), Box<dyn Error>> {
-        let config = InterpreterConfig::debug_no_heap("ws/interpret_flow.ws");
+        let config = InterpreterConfig::default_no_heap_suppressed("ws/interpret_flow.ws");
         let mut interpreter = Interpreter::new(config)?;
 
         interpreter.run()?;
@@ -737,7 +737,7 @@ mod tests {
 
     #[test]
     fn interpret_io() -> Result<(), Box<dyn Error>> {
-        let config = InterpreterConfig::debug_no_heap("ws/interpret_io.ws");
+        let config = InterpreterConfig::default_no_heap_suppressed("ws/interpret_io.ws");
         let mut interpreter = Interpreter::new(config)?;
 
         interpreter.run()?;

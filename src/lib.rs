@@ -1,5 +1,5 @@
-pub mod interpret;
-pub mod parse;
+pub mod interpreter;
+pub mod parser;
 
-pub use interpret::{Interpreter, InterpreterConfig};
-pub use parse::{Instruction, Parser};
+pub use interpreter::{Interpreter, InterpreterConfig};
+pub use parser::{Instruction, Parser};
