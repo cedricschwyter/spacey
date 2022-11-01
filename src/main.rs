@@ -1,7 +1,6 @@
 use clap::{App, Arg, ArgMatches};
 use spacey::interpreter::interpreter::InterpretError;
 use spacey::{Interpreter, InterpreterConfig};
-use std::error::Error;
 use std::time::Instant;
 
 fn args() -> ArgMatches {

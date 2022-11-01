@@ -2,6 +2,7 @@
 use memmap::Mmap;
 use std::error::Error;
 use std::fmt::Display;
+#[cfg(not(target_arch = "wasm32"))]
 use std::fs::File;
 use std::rc::Rc;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -15,7 +16,9 @@ pub const LINE_FEED: u8 = b'\n';
 pub(crate) enum ParseErrorKind {
     InvalidToken(usize, Vec<u8>, Vec<u8>),
     UnexpectedToken(usize, u8, Vec<u8>),
+    #[allow(unused)]
     FileOpenError(Box<dyn Error>),
+    #[allow(unused)]
     MemoryMapError(Box<dyn Error>),
 }
 

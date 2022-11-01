@@ -5,12 +5,12 @@ use crate::{Instruction, Parser};
 use getch::Getch;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::error::Error;
 use std::fmt::Display;
 use std::io::{stdin, stdout, Write};
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
 
+#[allow(unused)]
 const DEFAULT_HEAP_SIZE: usize = 524288;
 
 /// The root component for the virtual machine
@@ -202,7 +202,7 @@ enum InterpretErrorKind {
     StackUnderflow(Instruction),
     NumberOutOfBoundsError(Instruction, i32, i32, i32),
     NoTermination(Instruction),
-    StdinError(Instruction),
+    IOError(Instruction),
 }
 
 impl Display for InterpretErrorKind {
@@ -218,7 +218,7 @@ impl InterpretErrorKind {
             InterpretErrorKind::StackUnderflow(instr) => format!("stack is empty - failed executing: {:?}", instr),
             InterpretErrorKind::NumberOutOfBoundsError(instr, num, low, high) => format!("number is out of bounds for: {:?}, expected in the closed interval bounded by {} and {}, but was {}", instr, low, high, num),
             InterpretErrorKind::NoTermination(instr) => format!("no termination instruction after last executed instruction: {:?}", instr),
-            InterpretErrorKind::StdinError(instr) => format!("stdin error when executing: {:?}", instr),
+            InterpretErrorKind::IOError(instr) => format!("stdin error when executing: {:?}", instr),
             InterpretErrorKind::ParseError(err) => format!("parse error occurred: {}, {}", err.kind, err.msg)
         };
         Err(InterpretError { msg, kind: self })
@@ -624,8 +624,14 @@ impl Interpreter {
                         return Ok(());
                     }
                     if let Some(character) = char::from_u32(character as u32) {
-                        // write!(stdout(), "{}", character)?;
-                        // stdout().flush()?;
+                        match write!(stdout(), "{}", character) {
+                            Ok(val) => val,
+                            Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                        };
+                        match stdout().flush() {
+                            Ok(val) => val,
+                            Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                        };
 
                         return Ok(());
                     }
@@ -638,8 +644,14 @@ impl Interpreter {
                     if self.config.suppress_output {
                         return Ok(());
                     }
-                    // write!(stdout(), "{}", number)?;
-                    // stdout().flush()?;
+                    match write!(stdout(), "{}", number) {
+                        Ok(val) => val,
+                        Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                    };
+                    match stdout().flush() {
+                        Ok(val) => val,
+                        Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                    };
 
                     return Ok(());
                 }
@@ -661,16 +673,26 @@ impl Interpreter {
                         .throw();
                     }
 
-                    // stdout().flush()?;
-                    // return match Getch::new().getch() {
-                    //     Ok(val) => {
-                    //         self.heap[addr as usize] = val as i32;
-                    //         write!(stdout(), "{}", char::from_u32(val as u32).unwrap())?;
-                    //         stdout().flush()?;
-                    //         Ok(())
-                    //     }
-                    //     Err(err) => Err(Box::new(err)),
-                    // };
+                    match stdout().flush() {
+                        Ok(val) => val,
+                        Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                    };
+                    return match Getch::new().getch() {
+                        Ok(val) => {
+                            self.heap[addr as usize] = val as i32;
+                            match write!(stdout(), "{}", char::from_u32(val as u32).unwrap()) {
+                                Ok(val) => val,
+                                Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                            };
+                            match stdout().flush() {
+                                Ok(val) => val,
+                                Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                            };
+
+                            Ok(())
+                        }
+                        Err(_) => InterpretErrorKind::IOError(instr).throw(),
+                    };
                 }
 
                 InterpretErrorKind::StackUnderflow(instr).throw()
@@ -686,18 +708,27 @@ impl Interpreter {
                         )
                         .throw();
                     }
-                    // stdout().flush()?;
-                    // let mut input_text = String::new();
-                    // stdin().read_line(&mut input_text)?;
+                    match stdout().flush() {
+                        Ok(val) => val,
+                        Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                    };
+                    let mut input_text = String::new();
+                    match stdin().read_line(&mut input_text) {
+                        Ok(val) => val,
+                        Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                    };
 
-                    // let trimmed = input_text.trim();
-                    // let num = trimmed.parse::<i32>()?;
-                    // self.heap[addr as usize] = num;
+                    let trimmed = input_text.trim();
+                    let num = match trimmed.parse::<i32>() {
+                        Ok(val) => val,
+                        Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                    };
+                    self.heap[addr as usize] = num;
 
                     return Ok(());
                 }
 
-                InterpretErrorKind::StdinError(instr).throw()
+                InterpretErrorKind::IOError(instr).throw()
             }
             _ => InterpretErrorKind::ParseLogicError(instr).throw(),
         }
@@ -743,7 +774,6 @@ impl Interpreter {
 #[cfg(test)]
 mod tests {
     use super::{InterpretError, Interpreter, InterpreterConfig};
-    use std::error::Error;
 
     #[test]
     fn interpret_stack() -> Result<(), InterpretError> {
