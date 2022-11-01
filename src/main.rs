@@ -1,6 +1,6 @@
 use clap::{App, Arg, ArgMatches};
+use spacey::interpreter::interpreter::InterpretError;
 use spacey::{Interpreter, InterpreterConfig};
-use std::error::Error;
 use std::time::Instant;
 
 fn args() -> ArgMatches {
@@ -59,11 +59,11 @@ fn args() -> ArgMatches {
         .get_matches()
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), InterpretError> {
     let args = args();
     let file_name = args.value_of("file").unwrap();
     let heap_size = match args.value_of("heap-size") {
-        Some(size) => size.parse()?,
+        Some(size) => size.parse().unwrap(),
         None => 524288,
     };
     let ir = args.is_present("ir");

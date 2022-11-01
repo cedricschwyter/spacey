@@ -1,17 +1,22 @@
-use crate::parse::{CommandKind, ImpKind, ParamKind};
+use crate::parser::parser::ParseError;
+use crate::parser::{CommandKind, ImpKind, ParamKind};
 use crate::{Instruction, Parser};
+#[cfg(not(target_arch = "wasm32"))]
 use getch::Getch;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::error::Error;
 use std::fmt::Display;
 use std::io::{stdin, stdout, Write};
+use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen::JsValue;
 
+#[allow(unused)]
 const DEFAULT_HEAP_SIZE: usize = 524288;
 
 /// The root component for the virtual machine
-pub struct Interpreter<'a> {
-    config: InterpreterConfig<'a>,
+#[wasm_bindgen]
+pub struct Interpreter {
+    config: InterpreterConfig,
     stack: Vec<i32>,
     call_stack: Vec<usize>,
     heap: Vec<i32>,
@@ -21,8 +26,12 @@ pub struct Interpreter<'a> {
 }
 
 /// Configuration options for the interpreter
-pub struct InterpreterConfig<'a> {
-    file_name: &'a str,
+#[wasm_bindgen]
+pub struct InterpreterConfig {
+    #[cfg(not(target_arch = "wasm32"))]
+    file_name: String,
+    #[cfg(target_arch = "wasm32")]
+    source: String,
     heap_size: usize,
     ir: bool,
     debug: bool,
@@ -30,7 +39,37 @@ pub struct InterpreterConfig<'a> {
     suppress_output: bool,
 }
 
-impl InterpreterConfig<'_> {
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+impl InterpreterConfig {
+    /// Creates a new interpreter config with the given arguments
+    ///
+    /// - `source` the whitespace source as a String
+    /// - `heap_size` the size of the heap address space (each address holds an i32)
+    /// - `ir` print the IR of the parsed source file to stdout
+    /// - `debug` print debugging information to stdout when executing an instruction
+    /// - `debug_heap` print heap dump to stdout when executing an instruction
+    pub fn from_source(
+        source: &str,
+        heap_size: usize,
+        ir: bool,
+        debug: bool,
+        debug_heap: bool,
+        suppress_output: bool,
+    ) -> InterpreterConfig {
+        InterpreterConfig {
+            source: source.to_string(),
+            heap_size,
+            ir,
+            debug,
+            debug_heap,
+            suppress_output,
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl InterpreterConfig {
     /// Creates a new interpreter config with the given arguments
     ///
     /// - `file_name` the path to the whitespace source file on disk
@@ -47,7 +86,7 @@ impl InterpreterConfig<'_> {
         suppress_output: bool,
     ) -> InterpreterConfig {
         InterpreterConfig {
-            file_name,
+            file_name: file_name.to_string(),
             heap_size,
             ir,
             debug,
@@ -61,7 +100,7 @@ impl InterpreterConfig<'_> {
     /// `file_name` - the name of the source file on disk
     pub fn default_heap(file_name: &str) -> InterpreterConfig {
         InterpreterConfig {
-            file_name,
+            file_name: file_name.to_string(),
             heap_size: DEFAULT_HEAP_SIZE,
             ir: false,
             debug: false,
@@ -75,7 +114,7 @@ impl InterpreterConfig<'_> {
     /// `file_name` - the name of the source file on disk
     pub fn default_no_heap(file_name: &str) -> InterpreterConfig {
         InterpreterConfig {
-            file_name,
+            file_name: file_name.to_string(),
             heap_size: 0,
             ir: false,
             debug: false,
@@ -89,7 +128,7 @@ impl InterpreterConfig<'_> {
     /// `file_name` - the name of the source file on disk
     pub fn default_heap_suppressed(file_name: &str) -> InterpreterConfig {
         InterpreterConfig {
-            file_name,
+            file_name: file_name.to_string(),
             heap_size: DEFAULT_HEAP_SIZE,
             ir: false,
             debug: false,
@@ -103,7 +142,7 @@ impl InterpreterConfig<'_> {
     /// `file_name` - the name of the source file on disk
     pub fn default_no_heap_suppressed(file_name: &str) -> InterpreterConfig {
         InterpreterConfig {
-            file_name,
+            file_name: file_name.to_string(),
             heap_size: 0,
             ir: false,
             debug: false,
@@ -117,7 +156,7 @@ impl InterpreterConfig<'_> {
     /// `file_name` - the name of the source file on disk
     pub fn debug_heap(file_name: &str) -> InterpreterConfig {
         InterpreterConfig {
-            file_name,
+            file_name: file_name.to_string(),
             heap_size: DEFAULT_HEAP_SIZE,
             ir: false,
             debug: true,
@@ -131,7 +170,7 @@ impl InterpreterConfig<'_> {
     /// `file_name` - the name of the source file on disk
     pub fn debug_no_heap(file_name: &str) -> InterpreterConfig {
         InterpreterConfig {
-            file_name,
+            file_name: file_name.to_string(),
             heap_size: 0,
             ir: false,
             debug: true,
@@ -146,7 +185,7 @@ impl InterpreterConfig<'_> {
     /// `file_name` - the name of the source file on disk
     pub fn ir(file_name: &str) -> InterpreterConfig {
         InterpreterConfig {
-            file_name,
+            file_name: file_name.to_string(),
             heap_size: 0,
             ir: true,
             debug: false,
@@ -158,11 +197,12 @@ impl InterpreterConfig<'_> {
 
 #[derive(Debug)]
 enum InterpretErrorKind {
+    ParseError(ParseError),
     ParseLogicError(Instruction),
     StackUnderflow(Instruction),
     NumberOutOfBoundsError(Instruction, i32, i32, i32),
     NoTermination(Instruction),
-    StdinError(Instruction),
+    IOError(Instruction),
 }
 
 impl Display for InterpretErrorKind {
@@ -172,26 +212,31 @@ impl Display for InterpretErrorKind {
 }
 
 impl InterpretErrorKind {
-    fn throw<T>(self) -> Result<T, Box<dyn Error>> {
+    fn throw<T>(self) -> Result<T, InterpretError> {
         let msg = match &self {
             InterpretErrorKind::ParseLogicError(instr) => format!("the parser delivered an inconsistent state, something is severely broken from an application logic point of view. in other words: engineer fucked up. if you receive this error message please make sure to report this as an issue (please also supply the whitespace source) over at https://github.com/d3psi/spacey/issues. thank you. issue occurred when attempting to execute: {:?}", instr),
             InterpretErrorKind::StackUnderflow(instr) => format!("stack is empty - failed executing: {:?}", instr),
             InterpretErrorKind::NumberOutOfBoundsError(instr, num, low, high) => format!("number is out of bounds for: {:?}, expected in the closed interval bounded by {} and {}, but was {}", instr, low, high, num),
             InterpretErrorKind::NoTermination(instr) => format!("no termination instruction after last executed instruction: {:?}", instr),
-            InterpretErrorKind::StdinError(instr) => format!("stdin error when executing: {:?}", instr)
+            InterpretErrorKind::IOError(instr) => format!("stdin error when executing: {:?}", instr),
+            InterpretErrorKind::ParseError(err) => format!("parse error occurred: {}, {}", err.kind, err.msg)
         };
-        Err(Box::new(InterpretError { msg, kind: self }))
+        Err(InterpretError { msg, kind: self })
     }
 }
 
 #[derive(Debug)]
 #[allow(dead_code)]
-struct InterpretError {
+pub struct InterpretError {
     msg: String,
     kind: InterpretErrorKind,
 }
 
-impl Error for InterpretError {}
+impl Into<JsValue> for InterpretError {
+    fn into(self) -> JsValue {
+        JsValue::from(format!("spacey error occured: {}, {}", self.kind, self.msg))
+    }
+}
 
 impl Display for InterpretError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -199,15 +244,26 @@ impl Display for InterpretError {
     }
 }
 
-impl Interpreter<'_> {
+#[wasm_bindgen]
+impl Interpreter {
     /// Creates a new interpreter with the given arguments
     ///
     /// - `config` The configuration of the interpreter
-    pub fn new(config: InterpreterConfig) -> Result<Interpreter, Box<dyn Error>> {
-        let mut parser = Parser::new(config.file_name)?;
+    pub fn new(config: InterpreterConfig) -> Result<Interpreter, InterpretError> {
+        #[cfg(not(target_arch = "wasm32"))]
+        let source_or_source_file = &config.file_name;
+        #[cfg(target_arch = "wasm32")]
+        let source_or_source_file = &config.source;
+        let mut parser = match Parser::new(source_or_source_file) {
+            Ok(content) => content,
+            Err(err) => return InterpretErrorKind::ParseError(err).throw(),
+        };
         let mut instructions = vec![];
         for instr in &mut parser {
-            let instr = instr?;
+            let instr = match instr {
+                Ok(content) => content,
+                Err(err) => return InterpretErrorKind::ParseError(err).throw(),
+            };
             if config.ir {
                 dbg!(&instr);
             }
@@ -261,7 +317,7 @@ impl Interpreter<'_> {
     }
 
     /// Executes all instructions - runs the program.
-    pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
+    pub fn run(&mut self) -> Result<(), InterpretError> {
         while let Some(instr) = self.next_instruction() {
             self.exec(instr)?;
         }
@@ -283,7 +339,7 @@ impl Interpreter<'_> {
         self.done = false;
     }
 
-    fn stack(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
+    fn stack(&mut self, instr: Instruction) -> Result<(), InterpretError> {
         match instr.cmd {
             CommandKind::PushStack => {
                 if let Some(ParamKind::Number(val)) = instr.param {
@@ -373,7 +429,7 @@ impl Interpreter<'_> {
         }
     }
 
-    fn arithmetic(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
+    fn arithmetic(&mut self, instr: Instruction) -> Result<(), InterpretError> {
         match instr.cmd {
             CommandKind::Add => {
                 if let Some(right) = self.stack.pop() {
@@ -434,7 +490,7 @@ impl Interpreter<'_> {
         }
     }
 
-    fn heap(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
+    fn heap(&mut self, instr: Instruction) -> Result<(), InterpretError> {
         match instr.cmd {
             CommandKind::StoreHeap => {
                 if let Some(val) = self.stack.pop() {
@@ -480,7 +536,7 @@ impl Interpreter<'_> {
         }
     }
 
-    fn flow(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
+    fn flow(&mut self, instr: Instruction) -> Result<(), InterpretError> {
         match instr.cmd {
             CommandKind::Mark => Ok(()),
             CommandKind::Call => {
@@ -551,7 +607,7 @@ impl Interpreter<'_> {
         }
     }
 
-    fn io(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
+    fn io(&mut self, instr: Instruction) -> Result<(), InterpretError> {
         match instr.cmd {
             CommandKind::OutCharacter => {
                 if let Some(character) = self.stack.pop() {
@@ -568,8 +624,14 @@ impl Interpreter<'_> {
                         return Ok(());
                     }
                     if let Some(character) = char::from_u32(character as u32) {
-                        write!(stdout(), "{}", character)?;
-                        stdout().flush()?;
+                        match write!(stdout(), "{}", character) {
+                            Ok(val) => val,
+                            Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                        };
+                        match stdout().flush() {
+                            Ok(val) => val,
+                            Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                        };
 
                         return Ok(());
                     }
@@ -582,8 +644,14 @@ impl Interpreter<'_> {
                     if self.config.suppress_output {
                         return Ok(());
                     }
-                    write!(stdout(), "{}", number)?;
-                    stdout().flush()?;
+                    match write!(stdout(), "{}", number) {
+                        Ok(val) => val,
+                        Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                    };
+                    match stdout().flush() {
+                        Ok(val) => val,
+                        Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                    };
 
                     return Ok(());
                 }
@@ -591,6 +659,9 @@ impl Interpreter<'_> {
                 InterpretErrorKind::StackUnderflow(instr).throw()
             }
             CommandKind::ReadCharacter => {
+                #[cfg(target_arch = "wasm32")]
+                unimplemented!();
+                #[cfg(not(target_arch = "wasm32"))]
                 if let Some(addr) = self.stack.pop() {
                     if addr < 0 || addr as usize >= self.heap.len() {
                         return InterpretErrorKind::NumberOutOfBoundsError(
@@ -602,15 +673,25 @@ impl Interpreter<'_> {
                         .throw();
                     }
 
-                    stdout().flush()?;
+                    match stdout().flush() {
+                        Ok(val) => val,
+                        Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                    };
                     return match Getch::new().getch() {
                         Ok(val) => {
                             self.heap[addr as usize] = val as i32;
-                            write!(stdout(), "{}", char::from_u32(val as u32).unwrap())?;
-                            stdout().flush()?;
+                            match write!(stdout(), "{}", char::from_u32(val as u32).unwrap()) {
+                                Ok(val) => val,
+                                Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                            };
+                            match stdout().flush() {
+                                Ok(val) => val,
+                                Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                            };
+
                             Ok(())
                         }
-                        Err(err) => Err(Box::new(err)),
+                        Err(_) => InterpretErrorKind::IOError(instr).throw(),
                     };
                 }
 
@@ -627,18 +708,27 @@ impl Interpreter<'_> {
                         )
                         .throw();
                     }
-                    stdout().flush()?;
+                    match stdout().flush() {
+                        Ok(val) => val,
+                        Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                    };
                     let mut input_text = String::new();
-                    stdin().read_line(&mut input_text)?;
+                    match stdin().read_line(&mut input_text) {
+                        Ok(val) => val,
+                        Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                    };
 
                     let trimmed = input_text.trim();
-                    let num = trimmed.parse::<i32>()?;
+                    let num = match trimmed.parse::<i32>() {
+                        Ok(val) => val,
+                        Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                    };
                     self.heap[addr as usize] = num;
 
                     return Ok(());
                 }
 
-                InterpretErrorKind::StdinError(instr).throw()
+                InterpretErrorKind::IOError(instr).throw()
             }
             _ => InterpretErrorKind::ParseLogicError(instr).throw(),
         }
@@ -657,7 +747,7 @@ impl Interpreter<'_> {
     /// Executes a single instruction in the interpreter
     ///
     /// `instr` - the instruction to execute
-    pub fn exec(&mut self, instr: Instruction) -> Result<(), Box<dyn Error>> {
+    pub fn exec(&mut self, instr: Instruction) -> Result<(), InterpretError> {
         if self.config.debug {
             dbg!(&self.stack);
             dbg!(&self.call_stack);
@@ -683,12 +773,11 @@ impl Interpreter<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Interpreter, InterpreterConfig};
-    use std::error::Error;
+    use super::{InterpretError, Interpreter, InterpreterConfig};
 
     #[test]
-    fn interpret_stack() -> Result<(), Box<dyn Error>> {
-        let config = InterpreterConfig::debug_no_heap("ws/interpret_stack.ws");
+    fn interpret_stack() -> Result<(), InterpretError> {
+        let config = InterpreterConfig::default_no_heap_suppressed("ws/interpret_stack.ws");
         let mut interpreter = Interpreter::new(config)?;
 
         interpreter.run()?;
@@ -700,8 +789,8 @@ mod tests {
     }
 
     #[test]
-    fn interpret_arithmetic() -> Result<(), Box<dyn Error>> {
-        let config = InterpreterConfig::debug_no_heap("ws/interpret_arithmetic.ws");
+    fn interpret_arithmetic() -> Result<(), InterpretError> {
+        let config = InterpreterConfig::default_no_heap_suppressed("ws/interpret_arithmetic.ws");
         let mut interpreter = Interpreter::new(config)?;
 
         interpreter.run()?;
@@ -713,8 +802,8 @@ mod tests {
     }
 
     #[test]
-    fn interpret_heap() -> Result<(), Box<dyn Error>> {
-        let config = InterpreterConfig::debug_heap("ws/interpret_heap.ws");
+    fn interpret_heap() -> Result<(), InterpretError> {
+        let config = InterpreterConfig::default_heap_suppressed("ws/interpret_heap.ws");
         let mut interpreter = Interpreter::new(config)?;
 
         interpreter.run()?;
@@ -725,8 +814,8 @@ mod tests {
     }
 
     #[test]
-    fn interpret_flow() -> Result<(), Box<dyn Error>> {
-        let config = InterpreterConfig::debug_no_heap("ws/interpret_flow.ws");
+    fn interpret_flow() -> Result<(), InterpretError> {
+        let config = InterpreterConfig::default_no_heap_suppressed("ws/interpret_flow.ws");
         let mut interpreter = Interpreter::new(config)?;
 
         interpreter.run()?;
@@ -736,8 +825,8 @@ mod tests {
     }
 
     #[test]
-    fn interpret_io() -> Result<(), Box<dyn Error>> {
-        let config = InterpreterConfig::debug_no_heap("ws/interpret_io.ws");
+    fn interpret_io() -> Result<(), InterpretError> {
+        let config = InterpreterConfig::default_no_heap_suppressed("ws/interpret_io.ws");
         let mut interpreter = Interpreter::new(config)?;
 
         interpreter.run()?;
