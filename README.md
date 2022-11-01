@@ -1,5 +1,5 @@
 # spacey
-a tiny whitespace interpreter/virtual machine in rust
+a tiny, wasm-ready whitespace interpreter/virtual machine in rust
 
 ## project roadmap
 - [x] whitespace parser
@@ -14,12 +14,18 @@ a tiny whitespace interpreter/virtual machine in rust
 ## building and running
 make sure you have rust and the rust package manager `cargo` installed on your system. if not, the easiest way to do so is to install rust via [rustup.rs](https://rustup.rs).
 
-then, clone the repository and run as follows:
+then, clone the repository and build natively as follows:
 
 ```bash
 git clone https://github.com/D3PSI/spacey.git
 cd spacey
 cargo build --release
+```
+
+to build for wasm, simply install [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/) and execute:
+
+```bash
+wasm-pack build
 ```
 
 to run the provided executable run:
