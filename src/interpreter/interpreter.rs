@@ -305,26 +305,26 @@ impl Interpreter {
 
     /// Returns the next instruction to be executed in a `Some` variant. None if the program has
     /// reached its end.
-    pub fn next_instruction(&self) -> Option<Instruction> {
+    pub fn next_instruction(&self) -> Option<usize> {
         if self.done {
             return None;
         }
         if self.instruction_pointer < self.instructions.len() {
-            return Some(self.instructions[self.instruction_pointer].clone());
+            Some(self.instruction_pointer)
+        } else {
+            None
         }
-
-        None
     }
 
     /// Executes all instructions - runs the program.
     pub fn run(&mut self) -> Result<(), InterpretError> {
-        while let Some(instr) = self.next_instruction() {
-            self.exec(&instr)?;
+        while let Some(ip) = self.next_instruction() {
+            self.exec(ip)?;
         }
 
-        let last = self.instructions[self.instruction_pointer - 1].clone();
+        let last = &self.instructions[self.instruction_pointer - 1];
         if last.cmd != CommandKind::Exit {
-            return InterpretErrorKind::NoTermination(last).throw();
+            return InterpretErrorKind::NoTermination(last.clone()).throw();
         }
 
         Ok(())
@@ -339,7 +339,8 @@ impl Interpreter {
         self.done = false;
     }
 
-    fn stack(&mut self, instr: &Instruction) -> Result<(), InterpretError> {
+    fn stack(&mut self, ip: usize) -> Result<(), InterpretError> {
+        let instr = &self.instructions[ip];
         match instr.cmd {
             CommandKind::PushStack => {
                 if let Some(ParamKind::Number(val)) = instr.param {
@@ -429,7 +430,8 @@ impl Interpreter {
         }
     }
 
-    fn arithmetic(&mut self, instr: &Instruction) -> Result<(), InterpretError> {
+    fn arithmetic(&mut self, ip: usize) -> Result<(), InterpretError> {
+        let instr = &self.instructions[ip];
         match instr.cmd {
             CommandKind::Add => {
                 if let Some(right) = self.stack.pop() {
@@ -490,7 +492,8 @@ impl Interpreter {
         }
     }
 
-    fn heap(&mut self, instr: &Instruction) -> Result<(), InterpretError> {
+    fn heap(&mut self, ip: usize) -> Result<(), InterpretError> {
+        let instr = &self.instructions[ip];
         match instr.cmd {
             CommandKind::StoreHeap => {
                 if let Some(val) = self.stack.pop() {
@@ -536,7 +539,8 @@ impl Interpreter {
         }
     }
 
-    fn flow(&mut self, instr: &Instruction) -> Result<(), InterpretError> {
+    fn flow(&mut self, ip: usize) -> Result<(), InterpretError> {
+        let instr = &self.instructions[ip];
         match instr.cmd {
             CommandKind::Mark => Ok(()),
             CommandKind::Call => {
@@ -607,7 +611,8 @@ impl Interpreter {
         }
     }
 
-    fn io(&mut self, instr: &Instruction) -> Result<(), InterpretError> {
+    fn io(&mut self, ip: usize) -> Result<(), InterpretError> {
+        let instr = &self.instructions[ip];
         match instr.cmd {
             CommandKind::OutCharacter => {
                 if let Some(character) = self.stack.pop() {
@@ -751,7 +756,7 @@ impl Interpreter {
     /// Executes a single instruction in the interpreter
     ///
     /// `instr` - the instruction to execute
-    pub fn exec(&mut self, instr: &Instruction) -> Result<(), InterpretError> {
+    pub fn exec(&mut self, ip: usize) -> Result<(), InterpretError> {
         if self.config.debug {
             dbg!(&self.stack);
             dbg!(&self.call_stack);
@@ -761,12 +766,12 @@ impl Interpreter {
         if self.config.debug_heap {
             dbg!(self.generate_debug_heap_dump());
         }
-        let res = match instr.imp {
-            ImpKind::Stack => self.stack(instr),
-            ImpKind::Arithmetic => self.arithmetic(instr),
-            ImpKind::Heap => self.heap(instr),
-            ImpKind::Flow => self.flow(instr),
-            ImpKind::IO => self.io(instr),
+        let res = match self.instructions[ip].imp {
+            ImpKind::Stack => self.stack(ip),
+            ImpKind::Arithmetic => self.arithmetic(ip),
+            ImpKind::Heap => self.heap(ip),
+            ImpKind::Flow => self.flow(ip),
+            ImpKind::IO => self.io(ip),
         };
 
         self.instruction_pointer += 1;
