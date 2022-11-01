@@ -319,7 +319,7 @@ impl Interpreter {
     /// Executes all instructions - runs the program.
     pub fn run(&mut self) -> Result<(), InterpretError> {
         while let Some(instr) = self.next_instruction() {
-            self.exec(instr)?;
+            self.exec(&instr)?;
         }
 
         let last = self.instructions[self.instruction_pointer - 1].clone();
@@ -339,7 +339,7 @@ impl Interpreter {
         self.done = false;
     }
 
-    fn stack(&mut self, instr: Instruction) -> Result<(), InterpretError> {
+    fn stack(&mut self, instr: &Instruction) -> Result<(), InterpretError> {
         match instr.cmd {
             CommandKind::PushStack => {
                 if let Some(ParamKind::Number(val)) = instr.param {
@@ -348,7 +348,7 @@ impl Interpreter {
                     return Ok(());
                 }
 
-                InterpretErrorKind::ParseLogicError(instr).throw()
+                InterpretErrorKind::ParseLogicError(instr.clone()).throw()
             }
             CommandKind::DuplicateStack => {
                 if let Some(val) = self.stack.pop() {
@@ -358,13 +358,13 @@ impl Interpreter {
                     return Ok(());
                 }
 
-                InterpretErrorKind::StackUnderflow(instr).throw()
+                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
             }
             CommandKind::CopyNthStack => {
                 if let Some(ParamKind::Number(addr)) = instr.param {
                     if addr < 0 || addr as usize >= self.stack.len() {
                         return InterpretErrorKind::NumberOutOfBoundsError(
-                            instr,
+                            instr.clone(),
                             addr,
                             0,
                             self.stack.len() as i32 - 1,
@@ -378,7 +378,7 @@ impl Interpreter {
                     return Ok(());
                 }
 
-                InterpretErrorKind::ParseLogicError(instr).throw()
+                InterpretErrorKind::ParseLogicError(instr.clone()).throw()
             }
             CommandKind::SwapStack => {
                 if let Some(val) = self.stack.pop() {
@@ -389,23 +389,23 @@ impl Interpreter {
                         return Ok(());
                     }
 
-                    return InterpretErrorKind::StackUnderflow(instr).throw();
+                    return InterpretErrorKind::StackUnderflow(instr.clone()).throw();
                 }
-                InterpretErrorKind::StackUnderflow(instr).throw()
+                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
             }
             CommandKind::DiscardStack => {
                 if self.stack.pop().is_some() {
                     return Ok(());
                 }
 
-                InterpretErrorKind::StackUnderflow(instr).throw()
+                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
             }
             CommandKind::SlideNStack => {
                 if let Some(top) = self.stack.pop() {
                     if let Some(ParamKind::Number(val)) = instr.param {
                         if val < 0 {
                             return InterpretErrorKind::NumberOutOfBoundsError(
-                                instr,
+                                instr.clone(),
                                 val,
                                 0,
                                 i32::MAX,
@@ -420,16 +420,16 @@ impl Interpreter {
                         return Ok(());
                     }
 
-                    return InterpretErrorKind::ParseLogicError(instr).throw();
+                    return InterpretErrorKind::ParseLogicError(instr.clone()).throw();
                 }
 
-                InterpretErrorKind::StackUnderflow(instr).throw()
+                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
             }
-            _ => InterpretErrorKind::ParseLogicError(instr).throw(),
+            _ => InterpretErrorKind::ParseLogicError(instr.clone()).throw(),
         }
     }
 
-    fn arithmetic(&mut self, instr: Instruction) -> Result<(), InterpretError> {
+    fn arithmetic(&mut self, instr: &Instruction) -> Result<(), InterpretError> {
         match instr.cmd {
             CommandKind::Add => {
                 if let Some(right) = self.stack.pop() {
@@ -440,7 +440,7 @@ impl Interpreter {
                     }
                 }
 
-                InterpretErrorKind::StackUnderflow(instr).throw()
+                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
             }
             CommandKind::Subtract => {
                 if let Some(right) = self.stack.pop() {
@@ -451,7 +451,7 @@ impl Interpreter {
                     }
                 }
 
-                InterpretErrorKind::StackUnderflow(instr).throw()
+                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
             }
             CommandKind::Multiply => {
                 if let Some(right) = self.stack.pop() {
@@ -462,7 +462,7 @@ impl Interpreter {
                     }
                 }
 
-                InterpretErrorKind::StackUnderflow(instr).throw()
+                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
             }
             CommandKind::IntegerDivision => {
                 if let Some(right) = self.stack.pop() {
@@ -473,7 +473,7 @@ impl Interpreter {
                     }
                 }
 
-                InterpretErrorKind::StackUnderflow(instr).throw()
+                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
             }
             CommandKind::Modulo => {
                 if let Some(right) = self.stack.pop() {
@@ -484,20 +484,20 @@ impl Interpreter {
                     }
                 }
 
-                InterpretErrorKind::StackUnderflow(instr).throw()
+                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
             }
-            _ => InterpretErrorKind::ParseLogicError(instr).throw(),
+            _ => InterpretErrorKind::ParseLogicError(instr.clone()).throw(),
         }
     }
 
-    fn heap(&mut self, instr: Instruction) -> Result<(), InterpretError> {
+    fn heap(&mut self, instr: &Instruction) -> Result<(), InterpretError> {
         match instr.cmd {
             CommandKind::StoreHeap => {
                 if let Some(val) = self.stack.pop() {
                     if let Some(addr) = self.stack.pop() {
                         if addr < 0 || addr as usize >= self.heap.len() {
                             return InterpretErrorKind::NumberOutOfBoundsError(
-                                instr,
+                                instr.clone(),
                                 addr,
                                 0,
                                 self.heap.len() as i32 - 1,
@@ -511,13 +511,13 @@ impl Interpreter {
                     }
                 }
 
-                InterpretErrorKind::StackUnderflow(instr).throw()
+                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
             }
             CommandKind::RetrieveHeap => {
                 if let Some(addr) = self.stack.pop() {
                     if addr < 0 || addr as usize >= self.heap.len() {
                         return InterpretErrorKind::NumberOutOfBoundsError(
-                            instr,
+                            instr.clone(),
                             addr,
                             0,
                             self.heap.len() as i32 - 1,
@@ -530,13 +530,13 @@ impl Interpreter {
                     return Ok(());
                 }
 
-                InterpretErrorKind::StackUnderflow(instr).throw()
+                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
             }
-            _ => InterpretErrorKind::ParseLogicError(instr).throw(),
+            _ => InterpretErrorKind::ParseLogicError(instr.clone()).throw(),
         }
     }
 
-    fn flow(&mut self, instr: Instruction) -> Result<(), InterpretError> {
+    fn flow(&mut self, instr: &Instruction) -> Result<(), InterpretError> {
         match instr.cmd {
             CommandKind::Mark => Ok(()),
             CommandKind::Call => {
@@ -547,7 +547,7 @@ impl Interpreter {
                     return Ok(());
                 }
 
-                InterpretErrorKind::ParseLogicError(instr).throw()
+                InterpretErrorKind::ParseLogicError(instr.clone()).throw()
             }
             CommandKind::Jump => {
                 if let Some(ParamKind::Label(_, index)) = &instr.param {
@@ -556,7 +556,7 @@ impl Interpreter {
                     return Ok(());
                 }
 
-                InterpretErrorKind::ParseLogicError(instr).throw()
+                InterpretErrorKind::ParseLogicError(instr.clone()).throw()
             }
             CommandKind::JumpZero => {
                 if let Some(val) = self.stack.pop() {
@@ -568,10 +568,10 @@ impl Interpreter {
 
                         return Ok(());
                     }
-                    return InterpretErrorKind::StackUnderflow(instr).throw();
+                    return InterpretErrorKind::StackUnderflow(instr.clone()).throw();
                 }
 
-                InterpretErrorKind::ParseLogicError(instr).throw()
+                InterpretErrorKind::ParseLogicError(instr.clone()).throw()
             }
             CommandKind::JumpNegative => {
                 if let Some(val) = self.stack.pop() {
@@ -584,10 +584,10 @@ impl Interpreter {
                         return Ok(());
                     }
 
-                    return InterpretErrorKind::StackUnderflow(instr).throw();
+                    return InterpretErrorKind::StackUnderflow(instr.clone()).throw();
                 }
 
-                InterpretErrorKind::ParseLogicError(instr).throw()
+                InterpretErrorKind::ParseLogicError(instr.clone()).throw()
             }
             CommandKind::Return => {
                 if let Some(frame) = self.call_stack.pop() {
@@ -596,24 +596,24 @@ impl Interpreter {
                     return Ok(());
                 }
 
-                InterpretErrorKind::StackUnderflow(instr).throw()
+                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
             }
             CommandKind::Exit => {
                 self.done = true;
 
                 Ok(())
             }
-            _ => InterpretErrorKind::ParseLogicError(instr).throw(),
+            _ => InterpretErrorKind::ParseLogicError(instr.clone()).throw(),
         }
     }
 
-    fn io(&mut self, instr: Instruction) -> Result<(), InterpretError> {
+    fn io(&mut self, instr: &Instruction) -> Result<(), InterpretError> {
         match instr.cmd {
             CommandKind::OutCharacter => {
                 if let Some(character) = self.stack.pop() {
                     if character < 0 {
                         return InterpretErrorKind::NumberOutOfBoundsError(
-                            instr,
+                            instr.clone(),
                             character,
                             0,
                             i32::MAX,
@@ -626,18 +626,18 @@ impl Interpreter {
                     if let Some(character) = char::from_u32(character as u32) {
                         match write!(stdout(), "{}", character) {
                             Ok(val) => val,
-                            Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                            Err(_) => return InterpretErrorKind::IOError(instr.clone()).throw(),
                         };
                         match stdout().flush() {
                             Ok(val) => val,
-                            Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                            Err(_) => return InterpretErrorKind::IOError(instr.clone()).throw(),
                         };
 
                         return Ok(());
                     }
                 }
 
-                InterpretErrorKind::StackUnderflow(instr).throw()
+                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
             }
             CommandKind::OutInteger => {
                 if let Some(number) = self.stack.pop() {
@@ -646,17 +646,17 @@ impl Interpreter {
                     }
                     match write!(stdout(), "{}", number) {
                         Ok(val) => val,
-                        Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                        Err(_) => return InterpretErrorKind::IOError(instr.clone()).throw(),
                     };
                     match stdout().flush() {
                         Ok(val) => val,
-                        Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                        Err(_) => return InterpretErrorKind::IOError(instr.clone()).throw(),
                     };
 
                     return Ok(());
                 }
 
-                InterpretErrorKind::StackUnderflow(instr).throw()
+                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
             }
             CommandKind::ReadCharacter => {
                 #[cfg(target_arch = "wasm32")]
@@ -665,7 +665,7 @@ impl Interpreter {
                 if let Some(addr) = self.stack.pop() {
                     if addr < 0 || addr as usize >= self.heap.len() {
                         return InterpretErrorKind::NumberOutOfBoundsError(
-                            instr,
+                            instr.clone(),
                             addr,
                             0,
                             self.heap.len() as i32 - 1,
@@ -675,33 +675,37 @@ impl Interpreter {
 
                     match stdout().flush() {
                         Ok(val) => val,
-                        Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                        Err(_) => return InterpretErrorKind::IOError(instr.clone()).throw(),
                     };
                     return match Getch::new().getch() {
                         Ok(val) => {
                             self.heap[addr as usize] = val as i32;
                             match write!(stdout(), "{}", char::from_u32(val as u32).unwrap()) {
                                 Ok(val) => val,
-                                Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                                Err(_) => {
+                                    return InterpretErrorKind::IOError(instr.clone()).throw()
+                                }
                             };
                             match stdout().flush() {
                                 Ok(val) => val,
-                                Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                                Err(_) => {
+                                    return InterpretErrorKind::IOError(instr.clone()).throw()
+                                }
                             };
 
                             Ok(())
                         }
-                        Err(_) => InterpretErrorKind::IOError(instr).throw(),
+                        Err(_) => InterpretErrorKind::IOError(instr.clone()).throw(),
                     };
                 }
 
-                InterpretErrorKind::StackUnderflow(instr).throw()
+                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
             }
             CommandKind::ReadInteger => {
                 if let Some(addr) = self.stack.pop() {
                     if addr < 0 || addr as usize >= self.heap.len() {
                         return InterpretErrorKind::NumberOutOfBoundsError(
-                            instr,
+                            instr.clone(),
                             addr,
                             0,
                             self.heap.len() as i32 - 1,
@@ -710,27 +714,27 @@ impl Interpreter {
                     }
                     match stdout().flush() {
                         Ok(val) => val,
-                        Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                        Err(_) => return InterpretErrorKind::IOError(instr.clone()).throw(),
                     };
                     let mut input_text = String::new();
                     match stdin().read_line(&mut input_text) {
                         Ok(val) => val,
-                        Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                        Err(_) => return InterpretErrorKind::IOError(instr.clone()).throw(),
                     };
 
                     let trimmed = input_text.trim();
                     let num = match trimmed.parse::<i32>() {
                         Ok(val) => val,
-                        Err(_) => return InterpretErrorKind::IOError(instr).throw(),
+                        Err(_) => return InterpretErrorKind::IOError(instr.clone()).throw(),
                     };
                     self.heap[addr as usize] = num;
 
                     return Ok(());
                 }
 
-                InterpretErrorKind::IOError(instr).throw()
+                InterpretErrorKind::IOError(instr.clone()).throw()
             }
-            _ => InterpretErrorKind::ParseLogicError(instr).throw(),
+            _ => InterpretErrorKind::ParseLogicError(instr.clone()).throw(),
         }
     }
 
@@ -747,7 +751,7 @@ impl Interpreter {
     /// Executes a single instruction in the interpreter
     ///
     /// `instr` - the instruction to execute
-    pub fn exec(&mut self, instr: Instruction) -> Result<(), InterpretError> {
+    pub fn exec(&mut self, instr: &Instruction) -> Result<(), InterpretError> {
         if self.config.debug {
             dbg!(&self.stack);
             dbg!(&self.call_stack);
