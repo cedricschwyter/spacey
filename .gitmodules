@@ -1,0 +1,3 @@
+[submodule "examples/spacey-wasm-example"]
+	path = examples/spacey-wasm-example
+	url = https://github.com/D3PSI/spacey-wasm-example.git
