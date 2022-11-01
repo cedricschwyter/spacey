@@ -8,13 +8,15 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
 use std::io::{stdin, stdout, Write};
+use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
 
 const DEFAULT_HEAP_SIZE: usize = 524288;
 
 /// The root component for the virtual machine
-pub struct Interpreter<'a> {
-    config: InterpreterConfig<'a>,
+#[wasm_bindgen]
+pub struct Interpreter {
+    config: InterpreterConfig,
     stack: Vec<i32>,
     call_stack: Vec<usize>,
     heap: Vec<i32>,
@@ -24,8 +26,12 @@ pub struct Interpreter<'a> {
 }
 
 /// Configuration options for the interpreter
-pub struct InterpreterConfig<'a> {
-    file_name: &'a str,
+#[wasm_bindgen]
+pub struct InterpreterConfig {
+    #[cfg(not(target_arch = "wasm32"))]
+    file_name: String,
+    #[cfg(target_arch = "wasm32")]
+    source: String,
     heap_size: usize,
     ir: bool,
     debug: bool,
@@ -33,7 +39,37 @@ pub struct InterpreterConfig<'a> {
     suppress_output: bool,
 }
 
-impl InterpreterConfig<'_> {
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+impl InterpreterConfig {
+    /// Creates a new interpreter config with the given arguments
+    ///
+    /// - `source` the whitespace source as a String
+    /// - `heap_size` the size of the heap address space (each address holds an i32)
+    /// - `ir` print the IR of the parsed source file to stdout
+    /// - `debug` print debugging information to stdout when executing an instruction
+    /// - `debug_heap` print heap dump to stdout when executing an instruction
+    pub fn from_source(
+        source: &str,
+        heap_size: usize,
+        ir: bool,
+        debug: bool,
+        debug_heap: bool,
+        suppress_output: bool,
+    ) -> InterpreterConfig {
+        InterpreterConfig {
+            source: source.to_string(),
+            heap_size,
+            ir,
+            debug,
+            debug_heap,
+            suppress_output,
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl InterpreterConfig {
     /// Creates a new interpreter config with the given arguments
     ///
     /// - `file_name` the path to the whitespace source file on disk
@@ -50,7 +86,7 @@ impl InterpreterConfig<'_> {
         suppress_output: bool,
     ) -> InterpreterConfig {
         InterpreterConfig {
-            file_name,
+            file_name: file_name.to_string(),
             heap_size,
             ir,
             debug,
@@ -64,7 +100,7 @@ impl InterpreterConfig<'_> {
     /// `file_name` - the name of the source file on disk
     pub fn default_heap(file_name: &str) -> InterpreterConfig {
         InterpreterConfig {
-            file_name,
+            file_name: file_name.to_string(),
             heap_size: DEFAULT_HEAP_SIZE,
             ir: false,
             debug: false,
@@ -78,7 +114,7 @@ impl InterpreterConfig<'_> {
     /// `file_name` - the name of the source file on disk
     pub fn default_no_heap(file_name: &str) -> InterpreterConfig {
         InterpreterConfig {
-            file_name,
+            file_name: file_name.to_string(),
             heap_size: 0,
             ir: false,
             debug: false,
@@ -92,7 +128,7 @@ impl InterpreterConfig<'_> {
     /// `file_name` - the name of the source file on disk
     pub fn default_heap_suppressed(file_name: &str) -> InterpreterConfig {
         InterpreterConfig {
-            file_name,
+            file_name: file_name.to_string(),
             heap_size: DEFAULT_HEAP_SIZE,
             ir: false,
             debug: false,
@@ -106,7 +142,7 @@ impl InterpreterConfig<'_> {
     /// `file_name` - the name of the source file on disk
     pub fn default_no_heap_suppressed(file_name: &str) -> InterpreterConfig {
         InterpreterConfig {
-            file_name,
+            file_name: file_name.to_string(),
             heap_size: 0,
             ir: false,
             debug: false,
@@ -120,7 +156,7 @@ impl InterpreterConfig<'_> {
     /// `file_name` - the name of the source file on disk
     pub fn debug_heap(file_name: &str) -> InterpreterConfig {
         InterpreterConfig {
-            file_name,
+            file_name: file_name.to_string(),
             heap_size: DEFAULT_HEAP_SIZE,
             ir: false,
             debug: true,
@@ -134,7 +170,7 @@ impl InterpreterConfig<'_> {
     /// `file_name` - the name of the source file on disk
     pub fn debug_no_heap(file_name: &str) -> InterpreterConfig {
         InterpreterConfig {
-            file_name,
+            file_name: file_name.to_string(),
             heap_size: 0,
             ir: false,
             debug: true,
@@ -149,7 +185,7 @@ impl InterpreterConfig<'_> {
     /// `file_name` - the name of the source file on disk
     pub fn ir(file_name: &str) -> InterpreterConfig {
         InterpreterConfig {
-            file_name,
+            file_name: file_name.to_string(),
             heap_size: 0,
             ir: true,
             debug: false,
@@ -208,12 +244,17 @@ impl Display for InterpretError {
     }
 }
 
-impl Interpreter<'_> {
+#[wasm_bindgen]
+impl Interpreter {
     /// Creates a new interpreter with the given arguments
     ///
     /// - `config` The configuration of the interpreter
     pub fn new(config: InterpreterConfig) -> Result<Interpreter, InterpretError> {
-        let mut parser = match Parser::new(config.file_name) {
+        #[cfg(not(target_arch = "wasm32"))]
+        let source_or_source_file = &config.file_name;
+        #[cfg(target_arch = "wasm32")]
+        let source_or_source_file = &config.source;
+        let mut parser = match Parser::new(source_or_source_file) {
             Ok(content) => content,
             Err(err) => return InterpretErrorKind::ParseError(err).throw(),
         };
