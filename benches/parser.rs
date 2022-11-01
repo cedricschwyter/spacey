@@ -1,6 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use spacey::{parser::parser::ParseError, Parser};
-use std::error::Error;
 
 pub fn parse_benchmark(c: &mut Criterion) {
     c.bench_function("parse", |b| {

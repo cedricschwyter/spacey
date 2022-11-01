@@ -1,6 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use spacey::{interpreter::interpreter::InterpretError, Interpreter, InterpreterConfig};
-use std::error::Error;
 
 pub fn single_instruction_with_param_benchmark(c: &mut Criterion) {
     let config = InterpreterConfig::default_no_heap_suppressed("ws/push_stack.ws");
