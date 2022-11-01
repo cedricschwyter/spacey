@@ -3,6 +3,8 @@ use spacey::interpreter::interpreter::InterpretError;
 use spacey::{Interpreter, InterpreterConfig};
 use std::time::Instant;
 
+const MAX_ITER: usize = 100000000;
+
 fn args() -> ArgMatches {
     App::new("spacey")
         .about("a lightweight whitespace interpreter")
@@ -92,7 +94,14 @@ fn main() -> Result<(), InterpretError> {
             println!("starting to execute whitespace routine...\n\n");
         }
         let start = Instant::now();
-        interpreter.run()?;
+        let mut count = 0;
+        loop {
+            interpreter.run()?;
+            count += 1;
+            if count > MAX_ITER {
+                break;
+            }
+        }
         let end = Instant::now();
         if !quiet {
             println!(
