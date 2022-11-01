@@ -1,21 +1,26 @@
+#[cfg(not(target_arch = "wasm32"))]
 use memmap::Mmap;
 use std::error::Error;
 use std::fmt::Display;
 use std::fs::File;
 use std::rc::Rc;
+use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen::JsValue;
 
 pub const SPACE: u8 = b' ';
 pub const TAB: u8 = b'\t';
 pub const LINE_FEED: u8 = b'\n';
 
 #[derive(Debug)]
-enum ParseErrorKind {
+pub(crate) enum ParseErrorKind {
     InvalidToken(usize, Vec<u8>, Vec<u8>),
     UnexpectedToken(usize, u8, Vec<u8>),
+    FileOpenError(Box<dyn Error>),
+    MemoryMapError(Box<dyn Error>),
 }
 
 impl ParseErrorKind {
-    fn throw<T>(self) -> Result<T, Box<dyn Error>> {
+    fn throw<T>(self) -> Result<T, ParseError> {
         let msg = match &self {
             ParseErrorKind::UnexpectedToken(pos, token, tokens) => format!(
                 "unexpected token at position {}, expected one of {:?}, but got {}",
@@ -29,8 +34,12 @@ impl ParseErrorKind {
                 tokens.iter().map(|b| *b as char).collect::<Vec<_>>(),
                 rest.iter().map(|b| *b as char).collect::<Vec<_>>()
             ),
+            ParseErrorKind::FileOpenError(err) => format!("failed to open file, details: {}", err),
+            ParseErrorKind::MemoryMapError(err) => {
+                format!("failed to memory map file, details: {}", err)
+            }
         };
-        Err(Box::new(ParseError { msg, kind: self }))
+        Err(ParseError { msg, kind: self })
     }
 }
 
@@ -42,12 +51,19 @@ impl Display for ParseErrorKind {
 
 #[derive(Debug)]
 #[allow(dead_code)]
-struct ParseError {
-    msg: String,
-    kind: ParseErrorKind,
+pub struct ParseError {
+    pub(crate) msg: String,
+    pub(crate) kind: ParseErrorKind,
 }
 
-impl Error for ParseError {}
+impl Into<JsValue> for ParseError {
+    fn into(self) -> JsValue {
+        JsValue::from(format!(
+            "spacey error occurred: {}, {}",
+            self.kind, self.msg,
+        ))
+    }
+}
 
 impl Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -117,6 +133,7 @@ pub(crate) enum ParamKind {
 /// Intermediate representation for a whitespace instruction. Using the term IR here because I
 /// might turn this crate also into a whitespace compiler in the future.
 /// Contains data as well as metadata about whitespace instructions
+#[wasm_bindgen]
 #[derive(Debug, PartialEq, Clone)]
 pub struct Instruction {
     pub(crate) imp: ImpKind,
@@ -127,21 +144,46 @@ pub struct Instruction {
 }
 
 /// The component responsible for reading and parsing the source file
+#[wasm_bindgen]
 #[derive(Debug)]
 pub struct Parser {
+    #[cfg(not(target_arch = "wasm32"))]
     source: Mmap,
+    #[cfg(target_arch = "wasm32")]
+    source: Vec<u8>,
     token_index: usize,
     instruction_index: usize,
 }
 
+#[wasm_bindgen]
 impl Parser {
-    pub fn new(file_name: &str) -> Result<Parser, Box<dyn Error>> {
-        let file = File::open(&file_name)?;
-        let source = unsafe { Mmap::map(&file)? };
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn new(file_name: &str) -> Result<Parser, ParseError> {
+        let file = match File::open(&file_name) {
+            Ok(content) => content,
+            Err(err) => return ParseErrorKind::FileOpenError(Box::new(err)).throw(),
+        };
+        let source = unsafe {
+            match Mmap::map(&file) {
+                Ok(content) => content,
+                Err(err) => return ParseErrorKind::MemoryMapError(Box::new(err)).throw(),
+            }
+        };
         let index = 0;
 
         Ok(Parser {
             source,
+            token_index: index,
+            instruction_index: index,
+        })
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn new(source: &str) -> Result<Parser, ParseError> {
+        let index = 0;
+
+        Ok(Parser {
+            source: source.to_string().as_bytes().to_vec(),
             token_index: index,
             instruction_index: index,
         })
@@ -160,7 +202,7 @@ impl Parser {
         None
     }
 
-    fn imp(&mut self) -> Option<Result<ImpKind, Box<dyn Error>>> {
+    fn imp(&mut self) -> Option<Result<ImpKind, ParseError>> {
         let val = self.next()?;
         match val {
             SPACE => Some(Ok(ImpKind::Stack)),
@@ -198,7 +240,7 @@ impl Parser {
         }
     }
 
-    fn stack(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
+    fn stack(&mut self) -> Option<Result<CommandKind, ParseError>> {
         let val = self.next()?;
         match val {
             SPACE => Some(Ok(CommandKind::PushStack)),
@@ -258,7 +300,7 @@ impl Parser {
         }
     }
 
-    fn arithmetic(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
+    fn arithmetic(&mut self) -> Option<Result<CommandKind, ParseError>> {
         let val = self.next()?;
         match val {
             SPACE => {
@@ -317,7 +359,7 @@ impl Parser {
         }
     }
 
-    fn heap(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
+    fn heap(&mut self) -> Option<Result<CommandKind, ParseError>> {
         let val = self.next()?;
         match val {
             SPACE => Some(Ok(CommandKind::StoreHeap)),
@@ -333,7 +375,7 @@ impl Parser {
         }
     }
 
-    fn flow(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
+    fn flow(&mut self) -> Option<Result<CommandKind, ParseError>> {
         let val = self.next()?;
         match val {
             SPACE => {
@@ -409,7 +451,7 @@ impl Parser {
         }
     }
 
-    fn io(&mut self) -> Option<Result<CommandKind, Box<dyn Error>>> {
+    fn io(&mut self) -> Option<Result<CommandKind, ParseError>> {
         let val = self.next()?;
         match val {
             SPACE => {
@@ -460,7 +502,7 @@ impl Parser {
         }
     }
 
-    fn cmd(&mut self, imp: ImpKind) -> Option<Result<CommandKind, Box<dyn Error>>> {
+    fn cmd(&mut self, imp: ImpKind) -> Option<Result<CommandKind, ParseError>> {
         match imp {
             ImpKind::Stack => Some(self.stack()?),
             ImpKind::Arithmetic => Some(self.arithmetic()?),
@@ -470,7 +512,7 @@ impl Parser {
         }
     }
 
-    fn number(&mut self, sign: i32) -> Option<Result<ParamKind, Box<dyn Error>>> {
+    fn number(&mut self, sign: i32) -> Option<Result<ParamKind, ParseError>> {
         let mut places = Vec::new();
         let mut failure = None;
         while let Some(val) = self.next() {
@@ -502,7 +544,7 @@ impl Parser {
         Some(Ok(ParamKind::Number(sign * res)))
     }
 
-    fn label(&mut self) -> Option<Result<ParamKind, Box<dyn Error>>> {
+    fn label(&mut self) -> Option<Result<ParamKind, ParseError>> {
         let mut failure = None;
         let mut result = Vec::new();
         while let Some(val) = self.next() {
@@ -531,7 +573,7 @@ impl Parser {
         Some(Ok(ParamKind::Label(result.into(), 0)))
     }
 
-    fn param(&mut self, kind: ParamKind) -> Option<Result<ParamKind, Box<dyn Error>>> {
+    fn param(&mut self, kind: ParamKind) -> Option<Result<ParamKind, ParseError>> {
         match kind {
             ParamKind::Label(..) => self.label(),
             ParamKind::Number(_) => {
@@ -561,7 +603,7 @@ impl Parser {
         }
     }
 
-    fn instruction(&mut self) -> Option<Result<Instruction, Box<dyn Error>>> {
+    fn instruction(&mut self) -> Option<Result<Instruction, ParseError>> {
         let start_index = self.token_index;
         let imp = self.imp()?;
         if let Ok(imp) = imp {
@@ -600,7 +642,7 @@ impl Parser {
 }
 
 impl Iterator for &mut Parser {
-    type Item = Result<Instruction, Box<dyn Error>>;
+    type Item = Result<Instruction, ParseError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.instruction()
@@ -609,10 +651,9 @@ impl Iterator for &mut Parser {
 
 #[cfg(test)]
 mod tests {
-    use super::{CommandKind, ImpKind, Instruction, ParamKind, Parser};
-    use std::error::Error;
+    use super::{CommandKind, ImpKind, Instruction, ParamKind, ParseError, Parser};
 
-    fn test_parse(parser: &mut Parser, results: Vec<Instruction>) -> Result<(), Box<dyn Error>> {
+    fn test_parse(parser: &mut Parser, results: Vec<Instruction>) -> Result<(), ParseError> {
         let mut i = 0;
         for instr in parser {
             let instr = instr?;
@@ -627,7 +668,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_stack() -> Result<(), Box<dyn Error>> {
+    fn parse_stack() -> Result<(), ParseError> {
         let mut parser = Parser::new("ws/parse_stack.ws")?;
         let results = vec![
             Instruction {
@@ -685,7 +726,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_arithmetic() -> Result<(), Box<dyn Error>> {
+    fn parse_arithmetic() -> Result<(), ParseError> {
         let mut parser = Parser::new("ws/parse_arithmetic.ws")?;
         let results = vec![
             Instruction {
@@ -736,7 +777,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_heap() -> Result<(), Box<dyn Error>> {
+    fn parse_heap() -> Result<(), ParseError> {
         let mut parser = Parser::new("ws/parse_heap.ws")?;
         let results = vec![
             Instruction {
@@ -766,7 +807,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_flow() -> Result<(), Box<dyn Error>> {
+    fn parse_flow() -> Result<(), ParseError> {
         let mut parser = Parser::new("ws/parse_flow.ws")?;
         let results = vec![
             Instruction {
@@ -824,7 +865,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_io() -> Result<(), Box<dyn Error>> {
+    fn parse_io() -> Result<(), ParseError> {
         let mut parser = Parser::new("ws/parse_io.ws")?;
         let results = vec![
             Instruction {
