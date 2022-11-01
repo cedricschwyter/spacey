@@ -1,6 +1,9 @@
 # spacey
 a tiny, wasm-ready whitespace interpreter/virtual machine in rust
 
+## crates.io and npmjs.org
+the library crate is available both as a standard crate [spacey](https://crates.io/crates/spacey) as well as a bundled wasm package on npm under [node-spacey](https://www.npmjs.com/package/node-spacey).
+
 ## project roadmap
 - [x] whitespace parser
 - [x] whitespace virtual machine
