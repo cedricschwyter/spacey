@@ -1,5 +1,3 @@
-pub mod interpreter;
-pub mod parser;
+pub mod ws;
 
-pub use interpreter::{InterpretError, Interpreter, InterpreterConfig};
-pub use parser::{Instruction, ParseError, Parser};
+pub use ws::{WsInstruction, WsParseError, WsParser, WsVm, WsVmConfig, WsVmError};

@@ -1,6 +1,6 @@
-use crate::parser::parser::ParseError;
-use crate::parser::{CommandKind, ImpKind, ParamKind};
-use crate::{Instruction, Parser};
+use crate::ws::parser::parser::WsParseError;
+use crate::ws::parser::{WsCommandKind, WsImpKind, WsParamKind};
+use crate::{WsInstruction, WsParser};
 #[cfg(not(target_arch = "wasm32"))]
 use getch::Getch;
 use std::collections::BTreeMap;
@@ -15,25 +15,25 @@ const DEFAULT_HEAP_SIZE: usize = 524288;
 
 /// The root component for the virtual machine
 #[wasm_bindgen]
-pub struct Interpreter {
-    config: InterpreterConfig,
+pub struct WsVm {
+    config: WsVmConfig,
     stack: Vec<i32>,
     call_stack: Vec<usize>,
     heap: Vec<i32>,
     instruction_pointer: usize,
-    instructions: Vec<Instruction>,
+    instructions: Vec<WsInstruction>,
     done: bool,
 }
 
 /// Configuration options for the interpreter
 #[wasm_bindgen]
-pub struct InterpreterConfig {
+pub struct WsVmConfig {
     #[cfg(not(target_arch = "wasm32"))]
     file_name: String,
     #[cfg(target_arch = "wasm32")]
     source: String,
     heap_size: usize,
-    ir: bool,
+    raw: bool,
     debug: bool,
     debug_heap: bool,
     suppress_output: bool,
@@ -41,54 +41,154 @@ pub struct InterpreterConfig {
 
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
-impl InterpreterConfig {
+impl WsVmConfig {
     /// Creates a new interpreter config with the given arguments
     ///
     /// - `source` the whitespace source as a String
     /// - `heap_size` the size of the heap address space (each address holds an i32)
-    /// - `ir` print the IR of the parsed source file to stdout
+    /// - `raw` print the raw instructions of the parsed source file to stdout
     /// - `debug` print debugging information to stdout when executing an instruction
     /// - `debug_heap` print heap dump to stdout when executing an instruction
-    pub fn from_source(
+    #[wasm_bindgen(constructor)]
+    pub fn new(
         source: &str,
         heap_size: usize,
-        ir: bool,
+        raw: bool,
         debug: bool,
         debug_heap: bool,
         suppress_output: bool,
-    ) -> InterpreterConfig {
-        InterpreterConfig {
+    ) -> WsVmConfig {
+        WsVmConfig {
             source: source.to_string(),
             heap_size,
-            ir,
+            raw,
             debug,
             debug_heap,
             suppress_output,
         }
     }
+
+    /// Returns a default interpreter configuration with the default heap size
+    ///
+    /// - `source` the whitespace source as a String
+    pub fn default_heap(source: &str) -> WsVmConfig {
+        WsVmConfig {
+            source: source.to_string(),
+            heap_size: DEFAULT_HEAP_SIZE,
+            raw: false,
+            debug: false,
+            debug_heap: false,
+            suppress_output: false,
+        }
+    }
+
+    /// Returns a default interpreter configuration with no heap
+    ///
+    /// - `source` the whitespace source as a String
+    pub fn default_no_heap(source: &str) -> WsVmConfig {
+        WsVmConfig {
+            source: source.to_string(),
+            heap_size: 0,
+            raw: false,
+            debug: false,
+            debug_heap: false,
+            suppress_output: false,
+        }
+    }
+
+    /// Returns a default interpreter configuration with the default heap size, suppressing output
+    ///
+    /// - `source` the whitespace source as a String
+    pub fn default_heap_suppressed(source: &str) -> WsVmConfig {
+        WsVmConfig {
+            source: source.to_string(),
+            heap_size: DEFAULT_HEAP_SIZE,
+            raw: false,
+            debug: false,
+            debug_heap: false,
+            suppress_output: true,
+        }
+    }
+
+    /// Returns a default interpreter configuration with no heap, suppressing output
+    ///
+    /// - `source` the whitespace source as a String
+    pub fn default_no_heap_suppressed(source: &str) -> WsVmConfig {
+        WsVmConfig {
+            source: source.to_string(),
+            heap_size: 0,
+            raw: false,
+            debug: false,
+            debug_heap: false,
+            suppress_output: true,
+        }
+    }
+
+    /// Returns a default debug interpreter configuration with the default heap size
+    ///
+    /// - `source` the whitespace source as a String
+    pub fn debug_heap(source: &str) -> WsVmConfig {
+        WsVmConfig {
+            source: source.to_string(),
+            heap_size: DEFAULT_HEAP_SIZE,
+            raw: false,
+            debug: true,
+            debug_heap: true,
+            suppress_output: false,
+        }
+    }
+
+    /// Returns a default debug interpreter configuration with no heap
+    ///
+    /// - `source` the whitespace source as a String
+    pub fn debug_no_heap(source: &str) -> WsVmConfig {
+        WsVmConfig {
+            source: source.to_string(),
+            heap_size: 0,
+            raw: false,
+            debug: true,
+            debug_heap: false,
+            suppress_output: false,
+        }
+    }
+
+    /// Returns a default debug interpreter configuration to only compute the intermediate
+    /// representation of the source
+    ///
+    /// - `source` the whitespace source as a String
+    pub fn raw(source: &str) -> WsVmConfig {
+        WsVmConfig {
+            source: source.to_string(),
+            heap_size: 0,
+            raw: true,
+            debug: false,
+            debug_heap: false,
+            suppress_output: false,
+        }
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-impl InterpreterConfig {
+impl WsVmConfig {
     /// Creates a new interpreter config with the given arguments
     ///
     /// - `file_name` the path to the whitespace source file on disk
     /// - `heap_size` the size of the heap address space (each address holds an i32)
-    /// - `ir` print the IR of the parsed source file to stdout
+    /// - `raw` print the IR of the parsed source file to stdout
     /// - `debug` print debugging information to stdout when executing an instruction
     /// - `debug_heap` print heap dump to stdout when executing an instruction
     pub fn new(
         file_name: &str,
         heap_size: usize,
-        ir: bool,
+        raw: bool,
         debug: bool,
         debug_heap: bool,
         suppress_output: bool,
-    ) -> InterpreterConfig {
-        InterpreterConfig {
+    ) -> WsVmConfig {
+        WsVmConfig {
             file_name: file_name.to_string(),
             heap_size,
-            ir,
+            raw,
             debug,
             debug_heap,
             suppress_output,
@@ -98,11 +198,11 @@ impl InterpreterConfig {
     /// Returns a default interpreter configuration with the default heap size
     ///
     /// `file_name` - the name of the source file on disk
-    pub fn default_heap(file_name: &str) -> InterpreterConfig {
-        InterpreterConfig {
+    pub fn default_heap(file_name: &str) -> WsVmConfig {
+        WsVmConfig {
             file_name: file_name.to_string(),
             heap_size: DEFAULT_HEAP_SIZE,
-            ir: false,
+            raw: false,
             debug: false,
             debug_heap: false,
             suppress_output: false,
@@ -112,11 +212,11 @@ impl InterpreterConfig {
     /// Returns a default interpreter configuration with no heap
     ///
     /// `file_name` - the name of the source file on disk
-    pub fn default_no_heap(file_name: &str) -> InterpreterConfig {
-        InterpreterConfig {
+    pub fn default_no_heap(file_name: &str) -> WsVmConfig {
+        WsVmConfig {
             file_name: file_name.to_string(),
             heap_size: 0,
-            ir: false,
+            raw: false,
             debug: false,
             debug_heap: false,
             suppress_output: false,
@@ -126,11 +226,11 @@ impl InterpreterConfig {
     /// Returns a default interpreter configuration with the default heap size, suppressing output
     ///
     /// `file_name` - the name of the source file on disk
-    pub fn default_heap_suppressed(file_name: &str) -> InterpreterConfig {
-        InterpreterConfig {
+    pub fn default_heap_suppressed(file_name: &str) -> WsVmConfig {
+        WsVmConfig {
             file_name: file_name.to_string(),
             heap_size: DEFAULT_HEAP_SIZE,
-            ir: false,
+            raw: false,
             debug: false,
             debug_heap: false,
             suppress_output: true,
@@ -140,11 +240,11 @@ impl InterpreterConfig {
     /// Returns a default interpreter configuration with no heap, suppressing output
     ///
     /// `file_name` - the name of the source file on disk
-    pub fn default_no_heap_suppressed(file_name: &str) -> InterpreterConfig {
-        InterpreterConfig {
+    pub fn default_no_heap_suppressed(file_name: &str) -> WsVmConfig {
+        WsVmConfig {
             file_name: file_name.to_string(),
             heap_size: 0,
-            ir: false,
+            raw: false,
             debug: false,
             debug_heap: false,
             suppress_output: true,
@@ -154,11 +254,11 @@ impl InterpreterConfig {
     /// Returns a default debug interpreter configuration with the default heap size
     ///
     /// `file_name` - the name of the source file on disk
-    pub fn debug_heap(file_name: &str) -> InterpreterConfig {
-        InterpreterConfig {
+    pub fn debug_heap(file_name: &str) -> WsVmConfig {
+        WsVmConfig {
             file_name: file_name.to_string(),
             heap_size: DEFAULT_HEAP_SIZE,
-            ir: false,
+            raw: false,
             debug: true,
             debug_heap: true,
             suppress_output: false,
@@ -168,11 +268,11 @@ impl InterpreterConfig {
     /// Returns a default debug interpreter configuration with no heap
     ///
     /// `file_name` - the name of the source file on disk
-    pub fn debug_no_heap(file_name: &str) -> InterpreterConfig {
-        InterpreterConfig {
+    pub fn debug_no_heap(file_name: &str) -> WsVmConfig {
+        WsVmConfig {
             file_name: file_name.to_string(),
             heap_size: 0,
-            ir: false,
+            raw: false,
             debug: true,
             debug_heap: false,
             suppress_output: false,
@@ -183,11 +283,11 @@ impl InterpreterConfig {
     /// representation of the source
     ///
     /// `file_name` - the name of the source file on disk
-    pub fn ir(file_name: &str) -> InterpreterConfig {
-        InterpreterConfig {
+    pub fn raw(file_name: &str) -> WsVmConfig {
+        WsVmConfig {
             file_name: file_name.to_string(),
             heap_size: 0,
-            ir: true,
+            raw: true,
             debug: false,
             debug_heap: false,
             suppress_output: false,
@@ -196,75 +296,75 @@ impl InterpreterConfig {
 }
 
 #[derive(Debug)]
-enum InterpretErrorKind {
-    ParseError(ParseError),
-    ParseLogicError(Instruction),
-    StackUnderflow(Instruction),
-    NumberOutOfBoundsError(Instruction, i32, i32, i32),
-    NoTermination(Instruction),
-    IOError(Instruction),
+enum WsVmErrorKind {
+    ParseError(WsParseError),
+    ParseLogicError(WsInstruction),
+    StackUnderflow(WsInstruction),
+    NumberOutOfBoundsError(WsInstruction, i32, i32, i32),
+    NoTermination(WsInstruction),
+    IOError(WsInstruction),
 }
 
-impl Display for InterpretErrorKind {
+impl Display for WsVmErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self)
     }
 }
 
-impl InterpretErrorKind {
-    fn throw<T>(self) -> Result<T, InterpretError> {
+impl WsVmErrorKind {
+    fn throw<T>(self) -> Result<T, WsVmError> {
         let msg = match &self {
-            InterpretErrorKind::ParseLogicError(instr) => format!("the parser delivered an inconsistent state, something is severely broken from an application logic point of view. in other words: engineer fucked up. if you receive this error message please make sure to report this as an issue (please also supply the whitespace source) over at https://github.com/d3psi/spacey/issues. thank you. issue occurred when attempting to execute: {:?}", instr),
-            InterpretErrorKind::StackUnderflow(instr) => format!("stack is empty - failed executing: {:?}", instr),
-            InterpretErrorKind::NumberOutOfBoundsError(instr, num, low, high) => format!("number is out of bounds for: {:?}, expected in the closed interval bounded by {} and {}, but was {}", instr, low, high, num),
-            InterpretErrorKind::NoTermination(instr) => format!("no termination instruction after last executed instruction: {:?}", instr),
-            InterpretErrorKind::IOError(instr) => format!("stdin error when executing: {:?}", instr),
-            InterpretErrorKind::ParseError(err) => format!("parse error occurred: {}, {}", err.kind, err.msg)
+            WsVmErrorKind::ParseLogicError(instr) => format!("the parser delivered an inconsistent state, something is severely broken from an application logic point of view. in other words: engineer fucked up. if you receive this error message please make sure to report this as an issue (please also supply the whitespace source) over at https://github.com/d3psi/spacey/issues. thank you. issue occurred when attempting to execute: {:?}", instr),
+            WsVmErrorKind::StackUnderflow(instr) => format!("stack is empty - failed executing: {:?}", instr),
+            WsVmErrorKind::NumberOutOfBoundsError(instr, num, low, high) => format!("number is out of bounds for: {:?}, expected in the closed interval bounded by {} and {}, but was {}", instr, low, high, num),
+            WsVmErrorKind::NoTermination(instr) => format!("no termination instruction after last executed instruction: {:?}", instr),
+            WsVmErrorKind::IOError(instr) => format!("stdin error when executing: {:?}", instr),
+            WsVmErrorKind::ParseError(err) => format!("parse error occurred: {}, {}", err.kind, err.msg)
         };
-        Err(InterpretError { msg, kind: self })
+        Err(WsVmError { msg, kind: self })
     }
 }
 
 #[derive(Debug)]
 #[allow(dead_code)]
-pub struct InterpretError {
+pub struct WsVmError {
     msg: String,
-    kind: InterpretErrorKind,
+    kind: WsVmErrorKind,
 }
 
-impl Into<JsValue> for InterpretError {
+impl Into<JsValue> for WsVmError {
     fn into(self) -> JsValue {
         JsValue::from(format!("spacey error occured: {}, {}", self.kind, self.msg))
     }
 }
 
-impl Display for InterpretError {
+impl Display for WsVmError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self)
     }
 }
 
 #[wasm_bindgen]
-impl Interpreter {
+impl WsVm {
     /// Creates a new interpreter with the given arguments
     ///
     /// - `config` The configuration of the interpreter
-    pub fn new(config: InterpreterConfig) -> Result<Interpreter, InterpretError> {
+    pub fn new(config: WsVmConfig) -> Result<WsVm, WsVmError> {
         #[cfg(not(target_arch = "wasm32"))]
         let source_or_source_file = &config.file_name;
         #[cfg(target_arch = "wasm32")]
         let source_or_source_file = &config.source;
-        let mut parser = match Parser::new(source_or_source_file) {
+        let mut parser = match WsParser::new(source_or_source_file) {
             Ok(content) => content,
-            Err(err) => return InterpretErrorKind::ParseError(err).throw(),
+            Err(err) => return WsVmErrorKind::ParseError(err).throw(),
         };
         let mut instructions = vec![];
         for instr in &mut parser {
             let instr = match instr {
                 Ok(content) => content,
-                Err(err) => return InterpretErrorKind::ParseError(err).throw(),
+                Err(err) => return WsVmErrorKind::ParseError(err).throw(),
             };
-            if config.ir {
+            if config.raw {
                 dbg!(&instr);
             }
             instructions.push(instr);
@@ -277,22 +377,22 @@ impl Interpreter {
         let done = false;
 
         for (i, instr) in instructions.iter().enumerate() {
-            if instr.cmd == CommandKind::Mark {
-                if let Some(ParamKind::Label(label, _)) = instr.param.clone() {
+            if instr.cmd == WsCommandKind::Mark {
+                if let Some(WsParamKind::Label(label, _)) = instr.param.clone() {
                     labels.insert(label, i);
                 }
             }
         }
 
         for instr in &mut instructions {
-            if let Some(ParamKind::Label(label, _)) = instr.param.clone() {
+            if let Some(WsParamKind::Label(label, _)) = instr.param.clone() {
                 if let Some(index) = labels.get(&label) {
-                    instr.param = Some(ParamKind::Label(label, *index));
+                    instr.param = Some(WsParamKind::Label(label, *index));
                 }
             }
         }
 
-        Ok(Interpreter {
+        Ok(WsVm {
             config,
             instructions,
             stack,
@@ -317,14 +417,14 @@ impl Interpreter {
     }
 
     /// Executes all instructions - runs the program.
-    pub fn run(&mut self) -> Result<(), InterpretError> {
+    pub fn run(&mut self) -> Result<(), WsVmError> {
         while let Some(ip) = self.next_instruction() {
             self.exec(ip)?;
         }
 
         let last = &self.instructions[self.instruction_pointer - 1];
-        if last.cmd != CommandKind::Exit {
-            return InterpretErrorKind::NoTermination(last.clone()).throw();
+        if last.cmd != WsCommandKind::Exit {
+            return WsVmErrorKind::NoTermination(last.clone()).throw();
         }
 
         Ok(())
@@ -339,19 +439,19 @@ impl Interpreter {
         self.done = false;
     }
 
-    fn stack(&mut self, ip: usize) -> Result<(), InterpretError> {
+    fn stack(&mut self, ip: usize) -> Result<(), WsVmError> {
         let instr = &self.instructions[ip];
         match instr.cmd {
-            CommandKind::PushStack => {
-                if let Some(ParamKind::Number(val)) = instr.param {
+            WsCommandKind::PushStack => {
+                if let Some(WsParamKind::Number(val)) = instr.param {
                     self.stack.push(val);
 
                     return Ok(());
                 }
 
-                InterpretErrorKind::ParseLogicError(instr.clone()).throw()
+                WsVmErrorKind::ParseLogicError(instr.clone()).throw()
             }
-            CommandKind::DuplicateStack => {
+            WsCommandKind::DuplicateStack => {
                 if let Some(val) = self.stack.pop() {
                     self.stack.push(val);
                     self.stack.push(val);
@@ -359,12 +459,12 @@ impl Interpreter {
                     return Ok(());
                 }
 
-                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
+                WsVmErrorKind::StackUnderflow(instr.clone()).throw()
             }
-            CommandKind::CopyNthStack => {
-                if let Some(ParamKind::Number(addr)) = instr.param {
+            WsCommandKind::CopyNthStack => {
+                if let Some(WsParamKind::Number(addr)) = instr.param {
                     if addr < 0 || addr as usize >= self.stack.len() {
-                        return InterpretErrorKind::NumberOutOfBoundsError(
+                        return WsVmErrorKind::NumberOutOfBoundsError(
                             instr.clone(),
                             addr,
                             0,
@@ -379,9 +479,9 @@ impl Interpreter {
                     return Ok(());
                 }
 
-                InterpretErrorKind::ParseLogicError(instr.clone()).throw()
+                WsVmErrorKind::ParseLogicError(instr.clone()).throw()
             }
-            CommandKind::SwapStack => {
+            WsCommandKind::SwapStack => {
                 if let Some(val) = self.stack.pop() {
                     if let Some(other) = self.stack.pop() {
                         self.stack.push(val);
@@ -390,22 +490,22 @@ impl Interpreter {
                         return Ok(());
                     }
 
-                    return InterpretErrorKind::StackUnderflow(instr.clone()).throw();
+                    return WsVmErrorKind::StackUnderflow(instr.clone()).throw();
                 }
-                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
+                WsVmErrorKind::StackUnderflow(instr.clone()).throw()
             }
-            CommandKind::DiscardStack => {
+            WsCommandKind::DiscardStack => {
                 if self.stack.pop().is_some() {
                     return Ok(());
                 }
 
-                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
+                WsVmErrorKind::StackUnderflow(instr.clone()).throw()
             }
-            CommandKind::SlideNStack => {
+            WsCommandKind::SlideNStack => {
                 if let Some(top) = self.stack.pop() {
-                    if let Some(ParamKind::Number(val)) = instr.param {
+                    if let Some(WsParamKind::Number(val)) = instr.param {
                         if val < 0 {
-                            return InterpretErrorKind::NumberOutOfBoundsError(
+                            return WsVmErrorKind::NumberOutOfBoundsError(
                                 instr.clone(),
                                 val,
                                 0,
@@ -421,19 +521,19 @@ impl Interpreter {
                         return Ok(());
                     }
 
-                    return InterpretErrorKind::ParseLogicError(instr.clone()).throw();
+                    return WsVmErrorKind::ParseLogicError(instr.clone()).throw();
                 }
 
-                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
+                WsVmErrorKind::StackUnderflow(instr.clone()).throw()
             }
-            _ => InterpretErrorKind::ParseLogicError(instr.clone()).throw(),
+            _ => WsVmErrorKind::ParseLogicError(instr.clone()).throw(),
         }
     }
 
-    fn arithmetic(&mut self, ip: usize) -> Result<(), InterpretError> {
+    fn arithmetic(&mut self, ip: usize) -> Result<(), WsVmError> {
         let instr = &self.instructions[ip];
         match instr.cmd {
-            CommandKind::Add => {
+            WsCommandKind::Add => {
                 if let Some(right) = self.stack.pop() {
                     if let Some(left) = self.stack.pop() {
                         self.stack.push(left + right);
@@ -442,9 +542,9 @@ impl Interpreter {
                     }
                 }
 
-                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
+                WsVmErrorKind::StackUnderflow(instr.clone()).throw()
             }
-            CommandKind::Subtract => {
+            WsCommandKind::Subtract => {
                 if let Some(right) = self.stack.pop() {
                     if let Some(left) = self.stack.pop() {
                         self.stack.push(left - right);
@@ -453,9 +553,9 @@ impl Interpreter {
                     }
                 }
 
-                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
+                WsVmErrorKind::StackUnderflow(instr.clone()).throw()
             }
-            CommandKind::Multiply => {
+            WsCommandKind::Multiply => {
                 if let Some(right) = self.stack.pop() {
                     if let Some(left) = self.stack.pop() {
                         self.stack.push(left * right);
@@ -464,9 +564,9 @@ impl Interpreter {
                     }
                 }
 
-                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
+                WsVmErrorKind::StackUnderflow(instr.clone()).throw()
             }
-            CommandKind::IntegerDivision => {
+            WsCommandKind::IntegerDivision => {
                 if let Some(right) = self.stack.pop() {
                     if let Some(left) = self.stack.pop() {
                         self.stack.push(left / right);
@@ -475,9 +575,9 @@ impl Interpreter {
                     }
                 }
 
-                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
+                WsVmErrorKind::StackUnderflow(instr.clone()).throw()
             }
-            CommandKind::Modulo => {
+            WsCommandKind::Modulo => {
                 if let Some(right) = self.stack.pop() {
                     if let Some(left) = self.stack.pop() {
                         self.stack.push(left % right);
@@ -486,20 +586,20 @@ impl Interpreter {
                     }
                 }
 
-                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
+                WsVmErrorKind::StackUnderflow(instr.clone()).throw()
             }
-            _ => InterpretErrorKind::ParseLogicError(instr.clone()).throw(),
+            _ => WsVmErrorKind::ParseLogicError(instr.clone()).throw(),
         }
     }
 
-    fn heap(&mut self, ip: usize) -> Result<(), InterpretError> {
+    fn heap(&mut self, ip: usize) -> Result<(), WsVmError> {
         let instr = &self.instructions[ip];
         match instr.cmd {
-            CommandKind::StoreHeap => {
+            WsCommandKind::StoreHeap => {
                 if let Some(val) = self.stack.pop() {
                     if let Some(addr) = self.stack.pop() {
                         if addr < 0 || addr as usize >= self.heap.len() {
-                            return InterpretErrorKind::NumberOutOfBoundsError(
+                            return WsVmErrorKind::NumberOutOfBoundsError(
                                 instr.clone(),
                                 addr,
                                 0,
@@ -514,12 +614,12 @@ impl Interpreter {
                     }
                 }
 
-                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
+                WsVmErrorKind::StackUnderflow(instr.clone()).throw()
             }
-            CommandKind::RetrieveHeap => {
+            WsCommandKind::RetrieveHeap => {
                 if let Some(addr) = self.stack.pop() {
                     if addr < 0 || addr as usize >= self.heap.len() {
-                        return InterpretErrorKind::NumberOutOfBoundsError(
+                        return WsVmErrorKind::NumberOutOfBoundsError(
                             instr.clone(),
                             addr,
                             0,
@@ -533,91 +633,91 @@ impl Interpreter {
                     return Ok(());
                 }
 
-                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
+                WsVmErrorKind::StackUnderflow(instr.clone()).throw()
             }
-            _ => InterpretErrorKind::ParseLogicError(instr.clone()).throw(),
+            _ => WsVmErrorKind::ParseLogicError(instr.clone()).throw(),
         }
     }
 
-    fn flow(&mut self, ip: usize) -> Result<(), InterpretError> {
+    fn flow(&mut self, ip: usize) -> Result<(), WsVmError> {
         let instr = &self.instructions[ip];
         match instr.cmd {
-            CommandKind::Mark => Ok(()),
-            CommandKind::Call => {
-                if let Some(ParamKind::Label(_, index)) = &instr.param {
+            WsCommandKind::Mark => Ok(()),
+            WsCommandKind::Call => {
+                if let Some(WsParamKind::Label(_, index)) = &instr.param {
                     self.call_stack.push(self.instruction_pointer);
                     self.instruction_pointer = *index;
 
                     return Ok(());
                 }
 
-                InterpretErrorKind::ParseLogicError(instr.clone()).throw()
+                WsVmErrorKind::ParseLogicError(instr.clone()).throw()
             }
-            CommandKind::Jump => {
-                if let Some(ParamKind::Label(_, index)) = &instr.param {
+            WsCommandKind::Jump => {
+                if let Some(WsParamKind::Label(_, index)) = &instr.param {
                     self.instruction_pointer = *index;
 
                     return Ok(());
                 }
 
-                InterpretErrorKind::ParseLogicError(instr.clone()).throw()
+                WsVmErrorKind::ParseLogicError(instr.clone()).throw()
             }
-            CommandKind::JumpZero => {
+            WsCommandKind::JumpZero => {
                 if let Some(val) = self.stack.pop() {
                     if val != 0 {
                         return Ok(());
                     }
-                    if let Some(ParamKind::Label(_, index)) = &instr.param {
+                    if let Some(WsParamKind::Label(_, index)) = &instr.param {
                         self.instruction_pointer = *index;
 
                         return Ok(());
                     }
-                    return InterpretErrorKind::StackUnderflow(instr.clone()).throw();
+                    return WsVmErrorKind::StackUnderflow(instr.clone()).throw();
                 }
 
-                InterpretErrorKind::ParseLogicError(instr.clone()).throw()
+                WsVmErrorKind::ParseLogicError(instr.clone()).throw()
             }
-            CommandKind::JumpNegative => {
+            WsCommandKind::JumpNegative => {
                 if let Some(val) = self.stack.pop() {
                     if val >= 0 {
                         return Ok(());
                     }
-                    if let Some(ParamKind::Label(_, index)) = &instr.param {
+                    if let Some(WsParamKind::Label(_, index)) = &instr.param {
                         self.instruction_pointer = *index;
 
                         return Ok(());
                     }
 
-                    return InterpretErrorKind::StackUnderflow(instr.clone()).throw();
+                    return WsVmErrorKind::StackUnderflow(instr.clone()).throw();
                 }
 
-                InterpretErrorKind::ParseLogicError(instr.clone()).throw()
+                WsVmErrorKind::ParseLogicError(instr.clone()).throw()
             }
-            CommandKind::Return => {
+            WsCommandKind::Return => {
                 if let Some(frame) = self.call_stack.pop() {
                     self.instruction_pointer = frame;
 
                     return Ok(());
                 }
 
-                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
+                WsVmErrorKind::StackUnderflow(instr.clone()).throw()
             }
-            CommandKind::Exit => {
+            WsCommandKind::Exit => {
                 self.done = true;
 
                 Ok(())
             }
-            _ => InterpretErrorKind::ParseLogicError(instr.clone()).throw(),
+            _ => WsVmErrorKind::ParseLogicError(instr.clone()).throw(),
         }
     }
 
-    fn io(&mut self, ip: usize) -> Result<(), InterpretError> {
+    fn io(&mut self, ip: usize) -> Result<(), WsVmError> {
         let instr = &self.instructions[ip];
         match instr.cmd {
-            CommandKind::OutCharacter => {
+            WsCommandKind::OutCharacter => {
                 if let Some(character) = self.stack.pop() {
                     if character < 0 {
-                        return InterpretErrorKind::NumberOutOfBoundsError(
+                        return WsVmErrorKind::NumberOutOfBoundsError(
                             instr.clone(),
                             character,
                             0,
@@ -631,45 +731,45 @@ impl Interpreter {
                     if let Some(character) = char::from_u32(character as u32) {
                         match write!(stdout(), "{}", character) {
                             Ok(val) => val,
-                            Err(_) => return InterpretErrorKind::IOError(instr.clone()).throw(),
+                            Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
                         };
                         match stdout().flush() {
                             Ok(val) => val,
-                            Err(_) => return InterpretErrorKind::IOError(instr.clone()).throw(),
+                            Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
                         };
 
                         return Ok(());
                     }
                 }
 
-                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
+                WsVmErrorKind::StackUnderflow(instr.clone()).throw()
             }
-            CommandKind::OutInteger => {
+            WsCommandKind::OutInteger => {
                 if let Some(number) = self.stack.pop() {
                     if self.config.suppress_output {
                         return Ok(());
                     }
                     match write!(stdout(), "{}", number) {
                         Ok(val) => val,
-                        Err(_) => return InterpretErrorKind::IOError(instr.clone()).throw(),
+                        Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
                     };
                     match stdout().flush() {
                         Ok(val) => val,
-                        Err(_) => return InterpretErrorKind::IOError(instr.clone()).throw(),
+                        Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
                     };
 
                     return Ok(());
                 }
 
-                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
+                WsVmErrorKind::StackUnderflow(instr.clone()).throw()
             }
-            CommandKind::ReadCharacter => {
+            WsCommandKind::ReadCharacter => {
                 #[cfg(target_arch = "wasm32")]
                 unimplemented!();
                 #[cfg(not(target_arch = "wasm32"))]
                 if let Some(addr) = self.stack.pop() {
                     if addr < 0 || addr as usize >= self.heap.len() {
-                        return InterpretErrorKind::NumberOutOfBoundsError(
+                        return WsVmErrorKind::NumberOutOfBoundsError(
                             instr.clone(),
                             addr,
                             0,
@@ -680,36 +780,32 @@ impl Interpreter {
 
                     match stdout().flush() {
                         Ok(val) => val,
-                        Err(_) => return InterpretErrorKind::IOError(instr.clone()).throw(),
+                        Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
                     };
                     return match Getch::new().getch() {
                         Ok(val) => {
                             self.heap[addr as usize] = val as i32;
                             match write!(stdout(), "{}", char::from_u32(val as u32).unwrap()) {
                                 Ok(val) => val,
-                                Err(_) => {
-                                    return InterpretErrorKind::IOError(instr.clone()).throw()
-                                }
+                                Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
                             };
                             match stdout().flush() {
                                 Ok(val) => val,
-                                Err(_) => {
-                                    return InterpretErrorKind::IOError(instr.clone()).throw()
-                                }
+                                Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
                             };
 
                             Ok(())
                         }
-                        Err(_) => InterpretErrorKind::IOError(instr.clone()).throw(),
+                        Err(_) => WsVmErrorKind::IOError(instr.clone()).throw(),
                     };
                 }
 
-                InterpretErrorKind::StackUnderflow(instr.clone()).throw()
+                WsVmErrorKind::StackUnderflow(instr.clone()).throw()
             }
-            CommandKind::ReadInteger => {
+            WsCommandKind::ReadInteger => {
                 if let Some(addr) = self.stack.pop() {
                     if addr < 0 || addr as usize >= self.heap.len() {
-                        return InterpretErrorKind::NumberOutOfBoundsError(
+                        return WsVmErrorKind::NumberOutOfBoundsError(
                             instr.clone(),
                             addr,
                             0,
@@ -719,27 +815,27 @@ impl Interpreter {
                     }
                     match stdout().flush() {
                         Ok(val) => val,
-                        Err(_) => return InterpretErrorKind::IOError(instr.clone()).throw(),
+                        Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
                     };
                     let mut input_text = String::new();
                     match stdin().read_line(&mut input_text) {
                         Ok(val) => val,
-                        Err(_) => return InterpretErrorKind::IOError(instr.clone()).throw(),
+                        Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
                     };
 
                     let trimmed = input_text.trim();
                     let num = match trimmed.parse::<i32>() {
                         Ok(val) => val,
-                        Err(_) => return InterpretErrorKind::IOError(instr.clone()).throw(),
+                        Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
                     };
                     self.heap[addr as usize] = num;
 
                     return Ok(());
                 }
 
-                InterpretErrorKind::IOError(instr.clone()).throw()
+                WsVmErrorKind::IOError(instr.clone()).throw()
             }
-            _ => InterpretErrorKind::ParseLogicError(instr.clone()).throw(),
+            _ => WsVmErrorKind::ParseLogicError(instr.clone()).throw(),
         }
     }
 
@@ -756,7 +852,7 @@ impl Interpreter {
     /// Executes a single instruction in the interpreter
     ///
     /// `instr` - the instruction to execute
-    pub fn exec(&mut self, ip: usize) -> Result<(), InterpretError> {
+    pub fn exec(&mut self, ip: usize) -> Result<(), WsVmError> {
         if self.config.debug {
             dbg!(&self.stack);
             dbg!(&self.call_stack);
@@ -767,11 +863,11 @@ impl Interpreter {
             dbg!(self.generate_debug_heap_dump());
         }
         let res = match self.instructions[ip].imp {
-            ImpKind::Stack => self.stack(ip),
-            ImpKind::Arithmetic => self.arithmetic(ip),
-            ImpKind::Heap => self.heap(ip),
-            ImpKind::Flow => self.flow(ip),
-            ImpKind::IO => self.io(ip),
+            WsImpKind::Stack => self.stack(ip),
+            WsImpKind::Arithmetic => self.arithmetic(ip),
+            WsImpKind::Heap => self.heap(ip),
+            WsImpKind::Flow => self.flow(ip),
+            WsImpKind::IO => self.io(ip),
         };
 
         self.instruction_pointer += 1;
@@ -782,12 +878,12 @@ impl Interpreter {
 
 #[cfg(test)]
 mod tests {
-    use super::{InterpretError, Interpreter, InterpreterConfig};
+    use super::{WsVm, WsVmConfig, WsVmError};
 
     #[test]
-    fn interpret_stack() -> Result<(), InterpretError> {
-        let config = InterpreterConfig::default_no_heap_suppressed("ws/interpret_stack.ws");
-        let mut interpreter = Interpreter::new(config)?;
+    fn interpret_stack() -> Result<(), WsVmError> {
+        let config = WsVmConfig::default_no_heap_suppressed("ws/interpret_stack.ws");
+        let mut interpreter = WsVm::new(config)?;
 
         interpreter.run()?;
 
@@ -798,9 +894,9 @@ mod tests {
     }
 
     #[test]
-    fn interpret_arithmetic() -> Result<(), InterpretError> {
-        let config = InterpreterConfig::default_no_heap_suppressed("ws/interpret_arithmetic.ws");
-        let mut interpreter = Interpreter::new(config)?;
+    fn interpret_arithmetic() -> Result<(), WsVmError> {
+        let config = WsVmConfig::default_no_heap_suppressed("ws/interpret_arithmetic.ws");
+        let mut interpreter = WsVm::new(config)?;
 
         interpreter.run()?;
 
@@ -811,9 +907,9 @@ mod tests {
     }
 
     #[test]
-    fn interpret_heap() -> Result<(), InterpretError> {
-        let config = InterpreterConfig::default_heap_suppressed("ws/interpret_heap.ws");
-        let mut interpreter = Interpreter::new(config)?;
+    fn interpret_heap() -> Result<(), WsVmError> {
+        let config = WsVmConfig::default_heap_suppressed("ws/interpret_heap.ws");
+        let mut interpreter = WsVm::new(config)?;
 
         interpreter.run()?;
 
@@ -823,9 +919,9 @@ mod tests {
     }
 
     #[test]
-    fn interpret_flow() -> Result<(), InterpretError> {
-        let config = InterpreterConfig::default_no_heap_suppressed("ws/interpret_flow.ws");
-        let mut interpreter = Interpreter::new(config)?;
+    fn interpret_flow() -> Result<(), WsVmError> {
+        let config = WsVmConfig::default_no_heap_suppressed("ws/interpret_flow.ws");
+        let mut interpreter = WsVm::new(config)?;
 
         interpreter.run()?;
         assert_eq!(interpreter.stack, vec![]);
@@ -834,9 +930,9 @@ mod tests {
     }
 
     #[test]
-    fn interpret_io() -> Result<(), InterpretError> {
-        let config = InterpreterConfig::default_no_heap_suppressed("ws/interpret_io.ws");
-        let mut interpreter = Interpreter::new(config)?;
+    fn interpret_io() -> Result<(), WsVmError> {
+        let config = WsVmConfig::default_no_heap_suppressed("ws/interpret_io.ws");
+        let mut interpreter = WsVm::new(config)?;
 
         interpreter.run()?;
 
