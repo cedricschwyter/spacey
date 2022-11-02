@@ -1,6 +1,6 @@
 use clap::{App, Arg, ArgMatches};
-use spacey::interpreter::interpreter::InterpretError;
-use spacey::{Interpreter, InterpreterConfig};
+use spacey::ws::WsVmError;
+use spacey::{WsVm, WsVmConfig};
 use std::time::Instant;
 
 const ARG_FILE: &str = "file";
@@ -66,7 +66,7 @@ fn args() -> ArgMatches {
         .get_matches()
 }
 
-fn main() -> Result<(), InterpretError> {
+fn main() -> Result<(), WsVmError> {
     let args = args();
     let file_name = args.value_of(ARG_FILE).unwrap();
     let heap_size = match args.value_of(ARG_HEAP_SIZE) {
@@ -83,8 +83,8 @@ fn main() -> Result<(), InterpretError> {
     );
     }
     let start = Instant::now();
-    let config = InterpreterConfig::new(file_name, heap_size, raw, debug, debug_heap, false);
-    let mut interpreter = Interpreter::new(config)?;
+    let config = WsVmConfig::new(file_name, heap_size, raw, debug, debug_heap, false);
+    let mut interpreter = WsVm::new(config)?;
     let end = Instant::now();
     if !quiet {
         println!(
