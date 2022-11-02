@@ -33,7 +33,7 @@ pub struct InterpreterConfig {
     #[cfg(target_arch = "wasm32")]
     source: String,
     heap_size: usize,
-    ir: bool,
+    raw: bool,
     debug: bool,
     debug_heap: bool,
     suppress_output: bool,
@@ -46,13 +46,14 @@ impl InterpreterConfig {
     ///
     /// - `source` the whitespace source as a String
     /// - `heap_size` the size of the heap address space (each address holds an i32)
-    /// - `ir` print the IR of the parsed source file to stdout
+    /// - `raw` print the raw instructions of the parsed source file to stdout
     /// - `debug` print debugging information to stdout when executing an instruction
     /// - `debug_heap` print heap dump to stdout when executing an instruction
-    pub fn from_source(
+    #[wasm_bindgen(constructor)]
+    pub fn new(
         source: &str,
         heap_size: usize,
-        ir: bool,
+        raw: bool,
         debug: bool,
         debug_heap: bool,
         suppress_output: bool,
@@ -60,10 +61,109 @@ impl InterpreterConfig {
         InterpreterConfig {
             source: source.to_string(),
             heap_size,
-            ir,
+            raw,
             debug,
             debug_heap,
             suppress_output,
+        }
+    }
+
+    /// Returns a default interpreter configuration with the default heap size
+    ///
+    /// - `source` the whitespace source as a String
+    pub fn default_heap(source: &str) -> InterpreterConfig {
+        InterpreterConfig {
+            source: source.to_string(),
+            heap_size: DEFAULT_HEAP_SIZE,
+            raw: false,
+            debug: false,
+            debug_heap: false,
+            suppress_output: false,
+        }
+    }
+
+    /// Returns a default interpreter configuration with no heap
+    ///
+    /// - `source` the whitespace source as a String
+    pub fn default_no_heap(source: &str) -> InterpreterConfig {
+        InterpreterConfig {
+            source: source.to_string(),
+            heap_size: 0,
+            raw: false,
+            debug: false,
+            debug_heap: false,
+            suppress_output: false,
+        }
+    }
+
+    /// Returns a default interpreter configuration with the default heap size, suppressing output
+    ///
+    /// - `source` the whitespace source as a String
+    pub fn default_heap_suppressed(source: &str) -> InterpreterConfig {
+        InterpreterConfig {
+            source: source.to_string(),
+            heap_size: DEFAULT_HEAP_SIZE,
+            raw: false,
+            debug: false,
+            debug_heap: false,
+            suppress_output: true,
+        }
+    }
+
+    /// Returns a default interpreter configuration with no heap, suppressing output
+    ///
+    /// - `source` the whitespace source as a String
+    pub fn default_no_heap_suppressed(source: &str) -> InterpreterConfig {
+        InterpreterConfig {
+            source: source.to_string(),
+            heap_size: 0,
+            raw: false,
+            debug: false,
+            debug_heap: false,
+            suppress_output: true,
+        }
+    }
+
+    /// Returns a default debug interpreter configuration with the default heap size
+    ///
+    /// - `source` the whitespace source as a String
+    pub fn debug_heap(source: &str) -> InterpreterConfig {
+        InterpreterConfig {
+            source: source.to_string(),
+            heap_size: DEFAULT_HEAP_SIZE,
+            raw: false,
+            debug: true,
+            debug_heap: true,
+            suppress_output: false,
+        }
+    }
+
+    /// Returns a default debug interpreter configuration with no heap
+    ///
+    /// - `source` the whitespace source as a String
+    pub fn debug_no_heap(source: &str) -> InterpreterConfig {
+        InterpreterConfig {
+            source: source.to_string(),
+            heap_size: 0,
+            raw: false,
+            debug: true,
+            debug_heap: false,
+            suppress_output: false,
+        }
+    }
+
+    /// Returns a default debug interpreter configuration to only compute the intermediate
+    /// representation of the source
+    ///
+    /// - `source` the whitespace source as a String
+    pub fn raw(source: &str) -> InterpreterConfig {
+        InterpreterConfig {
+            source: source.to_string(),
+            heap_size: 0,
+            raw: true,
+            debug: false,
+            debug_heap: false,
+            suppress_output: false,
         }
     }
 }
@@ -74,13 +174,13 @@ impl InterpreterConfig {
     ///
     /// - `file_name` the path to the whitespace source file on disk
     /// - `heap_size` the size of the heap address space (each address holds an i32)
-    /// - `ir` print the IR of the parsed source file to stdout
+    /// - `raw` print the IR of the parsed source file to stdout
     /// - `debug` print debugging information to stdout when executing an instruction
     /// - `debug_heap` print heap dump to stdout when executing an instruction
     pub fn new(
         file_name: &str,
         heap_size: usize,
-        ir: bool,
+        raw: bool,
         debug: bool,
         debug_heap: bool,
         suppress_output: bool,
@@ -88,7 +188,7 @@ impl InterpreterConfig {
         InterpreterConfig {
             file_name: file_name.to_string(),
             heap_size,
-            ir,
+            raw,
             debug,
             debug_heap,
             suppress_output,
@@ -102,7 +202,7 @@ impl InterpreterConfig {
         InterpreterConfig {
             file_name: file_name.to_string(),
             heap_size: DEFAULT_HEAP_SIZE,
-            ir: false,
+            raw: false,
             debug: false,
             debug_heap: false,
             suppress_output: false,
@@ -116,7 +216,7 @@ impl InterpreterConfig {
         InterpreterConfig {
             file_name: file_name.to_string(),
             heap_size: 0,
-            ir: false,
+            raw: false,
             debug: false,
             debug_heap: false,
             suppress_output: false,
@@ -130,7 +230,7 @@ impl InterpreterConfig {
         InterpreterConfig {
             file_name: file_name.to_string(),
             heap_size: DEFAULT_HEAP_SIZE,
-            ir: false,
+            raw: false,
             debug: false,
             debug_heap: false,
             suppress_output: true,
@@ -144,7 +244,7 @@ impl InterpreterConfig {
         InterpreterConfig {
             file_name: file_name.to_string(),
             heap_size: 0,
-            ir: false,
+            raw: false,
             debug: false,
             debug_heap: false,
             suppress_output: true,
@@ -158,7 +258,7 @@ impl InterpreterConfig {
         InterpreterConfig {
             file_name: file_name.to_string(),
             heap_size: DEFAULT_HEAP_SIZE,
-            ir: false,
+            raw: false,
             debug: true,
             debug_heap: true,
             suppress_output: false,
@@ -172,7 +272,7 @@ impl InterpreterConfig {
         InterpreterConfig {
             file_name: file_name.to_string(),
             heap_size: 0,
-            ir: false,
+            raw: false,
             debug: true,
             debug_heap: false,
             suppress_output: false,
@@ -183,11 +283,11 @@ impl InterpreterConfig {
     /// representation of the source
     ///
     /// `file_name` - the name of the source file on disk
-    pub fn ir(file_name: &str) -> InterpreterConfig {
+    pub fn raw(file_name: &str) -> InterpreterConfig {
         InterpreterConfig {
             file_name: file_name.to_string(),
             heap_size: 0,
-            ir: true,
+            raw: true,
             debug: false,
             debug_heap: false,
             suppress_output: false,
@@ -264,7 +364,7 @@ impl Interpreter {
                 Ok(content) => content,
                 Err(err) => return InterpretErrorKind::ParseError(err).throw(),
             };
-            if config.ir {
+            if config.raw {
                 dbg!(&instr);
             }
             instructions.push(instr);
