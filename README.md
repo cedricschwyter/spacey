@@ -10,7 +10,8 @@ the library crate is available both as a standard crate [spacey](https://crates.
 - [x] usable exposed crate API
 - [x] spacey executable
 - [x] `wasm-bindgen` bindings for web assembly support
-- [x] make IO faster, get rid of `.clone()`'s in `Interpreter::next_instruction()`
+- [x] make IO faster, get rid of `.clone()`'s in `WsVm::next_instruction()`
+- [ ] intermediate representation for vm (detach vm from ws instructions)
 - [ ] LLVM backend to compile to standalone executable
 - [ ] termion/ncurses frontend with debugging capabilities
 
