@@ -1,6 +1,5 @@
-use crate::ws::parser::parser::WsParseError;
 use crate::ws::parser::{WsCommandKind, WsImpKind, WsParamKind};
-use crate::{WsInstruction, WsParser};
+use crate::{WsInstruction, WsParseError, WsParser};
 #[cfg(not(target_arch = "wasm32"))]
 use getch::Getch;
 use std::collections::BTreeMap;
