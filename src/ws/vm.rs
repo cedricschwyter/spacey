@@ -727,6 +727,9 @@ impl WsVm {
                     if self.config.suppress_output {
                         return Ok(());
                     }
+                    #[cfg(target_arch = "wasm32")]
+                    unimplemented!();
+                    #[cfg(not(target_arch = "wasm32"))]
                     if let Some(character) = char::from_u32(character as u32) {
                         match write!(stdout(), "{}", character) {
                             Ok(val) => val,
@@ -748,14 +751,19 @@ impl WsVm {
                     if self.config.suppress_output {
                         return Ok(());
                     }
-                    match write!(stdout(), "{}", number) {
-                        Ok(val) => val,
-                        Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
-                    };
-                    match stdout().flush() {
-                        Ok(val) => val,
-                        Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
-                    };
+                    #[cfg(target_arch = "wasm32")]
+                    unimplemented!();
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        match write!(stdout(), "{}", number) {
+                            Ok(val) => val,
+                            Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
+                        };
+                        match stdout().flush() {
+                            Ok(val) => val,
+                            Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
+                        };
+                    }
 
                     return Ok(());
                 }
@@ -763,9 +771,6 @@ impl WsVm {
                 WsVmErrorKind::StackUnderflow(instr.clone()).throw()
             }
             WsCommandKind::ReadCharacter => {
-                #[cfg(target_arch = "wasm32")]
-                unimplemented!();
-                #[cfg(not(target_arch = "wasm32"))]
                 if let Some(addr) = self.stack.pop() {
                     if addr < 0 || addr as usize >= self.heap.len() {
                         return WsVmErrorKind::NumberOutOfBoundsError(
@@ -776,27 +781,31 @@ impl WsVm {
                         )
                         .throw();
                     }
+                    #[cfg(target_arch = "wasm32")]
+                    unimplemented!();
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        match stdout().flush() {
+                            Ok(val) => val,
+                            Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
+                        };
+                        return match Getch::new().getch() {
+                            Ok(val) => {
+                                self.heap[addr as usize] = val as i32;
+                                match write!(stdout(), "{}", char::from_u32(val as u32).unwrap()) {
+                                    Ok(val) => val,
+                                    Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
+                                };
+                                match stdout().flush() {
+                                    Ok(val) => val,
+                                    Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
+                                };
 
-                    match stdout().flush() {
-                        Ok(val) => val,
-                        Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
-                    };
-                    return match Getch::new().getch() {
-                        Ok(val) => {
-                            self.heap[addr as usize] = val as i32;
-                            match write!(stdout(), "{}", char::from_u32(val as u32).unwrap()) {
-                                Ok(val) => val,
-                                Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
-                            };
-                            match stdout().flush() {
-                                Ok(val) => val,
-                                Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
-                            };
-
-                            Ok(())
-                        }
-                        Err(_) => WsVmErrorKind::IOError(instr.clone()).throw(),
-                    };
+                                Ok(())
+                            }
+                            Err(_) => WsVmErrorKind::IOError(instr.clone()).throw(),
+                        };
+                    }
                 }
 
                 WsVmErrorKind::StackUnderflow(instr.clone()).throw()
@@ -812,24 +821,29 @@ impl WsVm {
                         )
                         .throw();
                     }
-                    match stdout().flush() {
-                        Ok(val) => val,
-                        Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
-                    };
-                    let mut input_text = String::new();
-                    match stdin().read_line(&mut input_text) {
-                        Ok(val) => val,
-                        Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
-                    };
+                    #[cfg(target_arch = "wasm32")]
+                    unimplemented!();
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        match stdout().flush() {
+                            Ok(val) => val,
+                            Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
+                        };
+                        let mut input_text = String::new();
+                        match stdin().read_line(&mut input_text) {
+                            Ok(val) => val,
+                            Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
+                        };
 
-                    let trimmed = input_text.trim();
-                    let num = match trimmed.parse::<i32>() {
-                        Ok(val) => val,
-                        Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
-                    };
-                    self.heap[addr as usize] = num;
+                        let trimmed = input_text.trim();
+                        let num = match trimmed.parse::<i32>() {
+                            Ok(val) => val,
+                            Err(_) => return WsVmErrorKind::IOError(instr.clone()).throw(),
+                        };
+                        self.heap[addr as usize] = num;
 
-                    return Ok(());
+                        return Ok(());
+                    }
                 }
 
                 WsVmErrorKind::IOError(instr.clone()).throw()
