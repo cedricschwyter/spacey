@@ -1,11 +1,12 @@
 use std::{
+    any::Any,
     error::Error,
     fmt::{Debug, Display},
 };
 
 use wasm_bindgen::{prelude::wasm_bindgen, JsValue};
 
-use crate::Instruction;
+use crate::{Instruction, WsInstruction};
 
 #[derive(Debug)]
 pub(crate) enum ParseErrorKind {

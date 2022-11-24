@@ -594,13 +594,13 @@ impl WsParser {
 
 #[cfg(test)]
 mod tests {
-    use crate::parser::{Instr, Parser};
+    use crate::parser::Parser;
 
     use super::{ParseError, WsCommandKind, WsImpKind, WsInstruction, WsParamKind, WsParser};
 
     fn test_parse(
         parser: &mut Box<dyn Parser>,
-        results: Vec<Box<dyn Instr>>,
+        results: Vec<WsInstruction>,
     ) -> Result<(), ParseError> {
         let mut i = 0;
         for instr in parser {
@@ -608,7 +608,7 @@ mod tests {
             if i == results.len() {
                 break;
             }
-            assert_eq!(instr, results[i]);
+            assert_eq!(instr, Box::new(results[i]));
             i += 1;
         }
 
@@ -619,55 +619,55 @@ mod tests {
     fn parse_stack() -> Result<(), ParseError> {
         let mut parser = WsParser::new("ws/parse_stack.ws")?;
         let results = vec![
-            Box::new(WsInstruction {
+            WsInstruction {
                 imp: WsImpKind::Stack,
                 cmd: WsCommandKind::PushStack,
                 param: Some(WsParamKind::Number(64)),
                 token_index: 0,
                 instruction_index: 0,
-            }),
-            Box::new(WsInstruction {
+            },
+            WsInstruction {
                 imp: WsImpKind::Stack,
                 cmd: WsCommandKind::DuplicateStack,
                 param: None,
                 token_index: 11,
                 instruction_index: 1,
-            }),
-            Box::new(WsInstruction {
+            },
+            WsInstruction {
                 imp: WsImpKind::Stack,
                 cmd: WsCommandKind::CopyNthStack,
                 param: Some(WsParamKind::Number(64)),
                 token_index: 14,
                 instruction_index: 2,
-            }),
-            Box::new(WsInstruction {
+            },
+            WsInstruction {
                 imp: WsImpKind::Stack,
                 cmd: WsCommandKind::SwapStack,
                 param: None,
                 token_index: 26,
                 instruction_index: 3,
-            }),
-            Box::new(WsInstruction {
+            },
+            WsInstruction {
                 imp: WsImpKind::Stack,
                 cmd: WsCommandKind::DiscardStack,
                 param: None,
                 token_index: 29,
                 instruction_index: 4,
-            }),
-            Box::new(WsInstruction {
+            },
+            WsInstruction {
                 imp: WsImpKind::Stack,
                 cmd: WsCommandKind::SlideNStack,
                 param: Some(WsParamKind::Number(64)),
                 token_index: 32,
                 instruction_index: 5,
-            }),
-            Box::new(WsInstruction {
+            },
+            WsInstruction {
                 imp: WsImpKind::Flow,
                 cmd: WsCommandKind::Exit,
                 param: None,
                 token_index: 44,
                 instruction_index: 6,
-            }),
+            },
         ];
 
         test_parse(&mut parser, results)
