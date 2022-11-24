@@ -691,7 +691,7 @@ mod tests {
 
     #[test]
     fn parse_stack() -> Result<(), WsParseError> {
-        let mut parser = WsParser::new("ws/parse_stack.ws")?;
+        let mut parser = WsParser::new("resources/parse_stack.ws")?;
         let results = vec![
             WsInstruction {
                 imp: WsImpKind::Stack,
@@ -749,7 +749,7 @@ mod tests {
 
     #[test]
     fn parse_arithmetic() -> Result<(), WsParseError> {
-        let mut parser = WsParser::new("ws/parse_arithmetic.ws")?;
+        let mut parser = WsParser::new("resources/parse_arithmetic.ws")?;
         let results = vec![
             WsInstruction {
                 imp: WsImpKind::Arithmetic,
@@ -800,7 +800,7 @@ mod tests {
 
     #[test]
     fn parse_heap() -> Result<(), WsParseError> {
-        let mut parser = WsParser::new("ws/parse_heap.ws")?;
+        let mut parser = WsParser::new("resources/parse_heap.ws")?;
         let results = vec![
             WsInstruction {
                 imp: WsImpKind::Heap,
@@ -830,7 +830,7 @@ mod tests {
 
     #[test]
     fn parse_flow() -> Result<(), WsParseError> {
-        let mut parser = WsParser::new("ws/parse_flow.ws")?;
+        let mut parser = WsParser::new("resources/parse_flow.ws")?;
         let results = vec![
             WsInstruction {
                 imp: WsImpKind::Flow,
@@ -888,7 +888,7 @@ mod tests {
 
     #[test]
     fn parse_io() -> Result<(), WsParseError> {
-        let mut parser = WsParser::new("ws/parse_io.ws")?;
+        let mut parser = WsParser::new("resources/parse_io.ws")?;
         let results = vec![
             WsInstruction {
                 imp: WsImpKind::IO,

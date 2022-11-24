@@ -881,7 +881,7 @@ mod tests {
 
     #[test]
     fn interpret_stack() -> Result<(), WsVmError> {
-        let config = WsVmConfig::default_no_heap_suppressed("ws/interpret_stack.ws");
+        let config = WsVmConfig::default_no_heap_suppressed("resources/interpret_stack.ws");
         let mut interpreter = WsVm::new(config)?;
 
         interpreter.run()?;
@@ -894,7 +894,7 @@ mod tests {
 
     #[test]
     fn interpret_arithmetic() -> Result<(), WsVmError> {
-        let config = WsVmConfig::default_no_heap_suppressed("ws/interpret_arithmetic.ws");
+        let config = WsVmConfig::default_no_heap_suppressed("resources/interpret_arithmetic.ws");
         let mut interpreter = WsVm::new(config)?;
 
         interpreter.run()?;
@@ -907,7 +907,7 @@ mod tests {
 
     #[test]
     fn interpret_heap() -> Result<(), WsVmError> {
-        let config = WsVmConfig::default_heap_suppressed("ws/interpret_heap.ws");
+        let config = WsVmConfig::default_heap_suppressed("resources/interpret_heap.ws");
         let mut interpreter = WsVm::new(config)?;
 
         interpreter.run()?;
@@ -919,7 +919,7 @@ mod tests {
 
     #[test]
     fn interpret_flow() -> Result<(), WsVmError> {
-        let config = WsVmConfig::default_no_heap_suppressed("ws/interpret_flow.ws");
+        let config = WsVmConfig::default_no_heap_suppressed("resources/interpret_flow.ws");
         let mut interpreter = WsVm::new(config)?;
 
         interpreter.run()?;
@@ -930,7 +930,7 @@ mod tests {
 
     #[test]
     fn interpret_io() -> Result<(), WsVmError> {
-        let config = WsVmConfig::default_no_heap_suppressed("ws/interpret_io.ws");
+        let config = WsVmConfig::default_no_heap_suppressed("resources/interpret_io.ws");
         let mut interpreter = WsVm::new(config)?;
 
         interpreter.run()?;
