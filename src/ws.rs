@@ -73,8 +73,7 @@ pub(crate) enum WsParamKind {
     Label(Rc<str>, usize),
 }
 
-/// Intermediate representation for a whitespace instruction. Using the term IR here because I
-/// might turn this crate also into a whitespace compiler in the future.
+/// Tokenized representation for a whitespace instruction.
 /// Contains data as well as metadata about whitespace instructions
 #[wasm_bindgen]
 #[derive(Debug, PartialEq, Clone)]
