@@ -1,5 +1,6 @@
-use crate::ws::parser::{WsCommandKind, WsImpKind, WsParamKind};
-use crate::{Instruction, WsInstruction, WsParseError, WsParser};
+use crate::parser::ParseError;
+use crate::ws::{WsCommandKind, WsImpKind, WsParamKind};
+use crate::{Instruction, WsParser};
 #[cfg(not(target_arch = "wasm32"))]
 use getch::Getch;
 use std::collections::BTreeMap;
@@ -296,7 +297,7 @@ impl VmConfig {
 
 #[derive(Debug)]
 enum VmErrorKind {
-    ParseError(WsParseError),
+    ParseError(ParseError),
     ParseLogicError(Instruction),
     StackUnderflow(Instruction),
     NumberOutOfBoundsError(Instruction, i32, i32, i32),
