@@ -19,7 +19,7 @@ pub enum SourceType {
 impl FromStr for SourceType {
     type Err = ();
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
+        match s.to_lowercase().as_str() {
             "whitespace" => Ok(SourceType::Whitespace),
             "malbolge" => Ok(SourceType::Malbolge),
             "brainfuck" => Ok(SourceType::Brainfuck),
