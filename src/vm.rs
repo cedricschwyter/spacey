@@ -388,9 +388,13 @@ impl Vm {
         let source_or_source_file = &config.file_name;
         #[cfg(target_arch = "wasm32")]
         let source_or_source_file = &config.source;
-        let mut parser = match WsParser::new(source_or_source_file) {
-            Ok(content) => content,
-            Err(err) => return VmErrorKind::ParseError(err).throw(),
+        let mut parser = match config.source_type {
+            SourceType::Whitespace => match WsParser::new(source_or_source_file) {
+                Ok(content) => content,
+                Err(err) => return VmErrorKind::ParseError(err).throw(),
+            },
+            SourceType::Malbolge => unimplemented!(),
+            SourceType::Brainfuck => unimplemented!(),
         };
         let mut instructions = vec![];
         for instr in &mut parser {
