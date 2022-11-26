@@ -86,6 +86,10 @@ pub struct WsInstruction {
 }
 
 impl Instr for WsInstruction {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     fn translate(&self) -> Result<Instruction, ParseError> {
         todo!();
         Ok(Instruction::Add)
@@ -607,8 +611,15 @@ mod tests {
             if i == results.len() {
                 break;
             }
-            assert_eq!(instr, Box::new(results[i]));
+            assert_eq!(
+                &results[i],
+                instr.as_any().downcast_ref::<WsInstruction>().unwrap()
+            );
             i += 1;
+        }
+
+        if i != results.len() {
+            panic!("parsed incorrect number of instructions")
         }
 
         Ok(())

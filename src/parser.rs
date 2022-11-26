@@ -1,4 +1,5 @@
 use std::{
+    any::Any,
     error::Error,
     fmt::{Debug, Display},
     str::FromStr,
@@ -91,6 +92,8 @@ impl Display for ParseError {
 }
 
 pub trait Instr: Debug {
+    fn as_any(&self) -> &dyn Any;
+
     fn translate(&self) -> Result<Instruction, ParseError>;
 }
 
