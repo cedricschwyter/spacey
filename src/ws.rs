@@ -1,8 +1,9 @@
+use crate::ir::Label;
 use crate::parser::Instr;
 use crate::parser::ParseError;
 use crate::parser::ParseErrorKind;
 use crate::parser::Parser;
-use crate::Instruction;
+use crate::{ir::Number, Instruction};
 #[cfg(not(target_arch = "wasm32"))]
 use memmap::Mmap;
 #[cfg(not(target_arch = "wasm32"))]
@@ -89,8 +90,80 @@ impl Instr for WsInstruction {
     }
 
     fn translate(&self) -> Result<Instruction, ParseError> {
-        todo!();
-        Ok(Instruction::Add)
+        match self.cmd {
+            WsCommandKind::PushStack => {
+                if let Some(WsParamKind::Number(num)) = self.param {
+                    return Ok(Instruction::PushStack(Number { value: num }));
+                }
+
+                unreachable!();
+            }
+            WsCommandKind::DuplicateStack => Ok(Instruction::DuplicateStack),
+            WsCommandKind::CopyNthStack => {
+                if let Some(WsParamKind::Number(num)) = self.param {
+                    return Ok(Instruction::CopyNthStack(Number { value: num }));
+                }
+
+                unreachable!();
+            }
+            WsCommandKind::SwapStack => Ok(Instruction::SwapStack),
+            WsCommandKind::DiscardStack => Ok(Instruction::DiscardStack),
+            WsCommandKind::SlideNStack => {
+                if let Some(WsParamKind::Number(num)) = self.param {
+                    return Ok(Instruction::CopyNthStack(Number { value: num }));
+                }
+
+                unreachable!();
+            }
+            WsCommandKind::Add => Ok(Instruction::Add),
+            WsCommandKind::Subtract => Ok(Instruction::Subtract),
+            WsCommandKind::Multiply => Ok(Instruction::Multiply),
+            WsCommandKind::IntegerDivision => Ok(Instruction::IntegerDivision),
+            WsCommandKind::Modulo => Ok(Instruction::Modulo),
+            WsCommandKind::StoreHeap => Ok(Instruction::StoreHeap),
+            WsCommandKind::RetrieveHeap => Ok(Instruction::RetrieveHeap),
+            WsCommandKind::Mark => {
+                if let Some(WsParamKind::Label(value, index)) = self.param.clone() {
+                    return Ok(Instruction::Mark(Label { value, index }));
+                }
+
+                unreachable!();
+            }
+            WsCommandKind::Call => {
+                if let Some(WsParamKind::Label(value, index)) = self.param.clone() {
+                    return Ok(Instruction::Call(Label { value, index }));
+                }
+
+                unreachable!();
+            }
+            WsCommandKind::Jump => {
+                if let Some(WsParamKind::Label(value, index)) = self.param.clone() {
+                    return Ok(Instruction::Jump(Label { value, index }));
+                }
+
+                unreachable!();
+            }
+            WsCommandKind::JumpZero => {
+                if let Some(WsParamKind::Label(value, index)) = self.param.clone() {
+                    return Ok(Instruction::JumpZero(Label { value, index }));
+                }
+
+                unreachable!();
+            }
+            WsCommandKind::JumpNegative => {
+                if let Some(WsParamKind::Label(value, index)) = self.param.clone() {
+                    return Ok(Instruction::JumpNegative(Label { value, index }));
+                }
+
+                unreachable!();
+            }
+            WsCommandKind::Return => Ok(Instruction::Return),
+            WsCommandKind::Exit => Ok(Instruction::Exit),
+            WsCommandKind::OutCharacter => Ok(Instruction::OutCharacter),
+            WsCommandKind::OutInteger => Ok(Instruction::OutInteger),
+            WsCommandKind::ReadCharacter => Ok(Instruction::ReadCharacter),
+            WsCommandKind::ReadInteger => Ok(Instruction::ReadInteger),
+        }
     }
 }
 
