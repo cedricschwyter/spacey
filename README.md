@@ -45,6 +45,6 @@ execute whitespace-files like:
 cargo run --release -q -- -f ws/hello_world.ws
 ```
 
-spacey can execute *800+ million* instructions a second\*
+spacey can execute *1.8+ billion* instructions a second\*
 
 \*data extrapolated from single-instruction benchmark (`cargo bench`), which executes a single `PushStack` followed by an `Exit` instruction. benchmark run on a single Intel i7-7700K CPU core clocked at 5.1 GHz. this measurement is statistically significant because it was made with the `criterion.rs` statistical benchmarking suite. for comparison, the reference interpreter in Haskell manages 94.5 million instructions per second, according to [this](https://github.com/CensoredUsername/whitespace-rs). according to the same project, a JIT implementation beats spacey by about 200 million instructions per second, i.e., is a respectable (but only, considering JIT) around 25% faster than spacey. with some work I am confident I could match those numbers
