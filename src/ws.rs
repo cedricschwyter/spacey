@@ -110,7 +110,7 @@ impl Instr for WsInstruction {
             WsCommandKind::DiscardStack => Ok(Instruction::DiscardStack),
             WsCommandKind::SlideNStack => {
                 if let Some(WsParamKind::Number(num)) = self.param {
-                    return Ok(Instruction::CopyNthStack(Number { value: num }));
+                    return Ok(Instruction::SlideNStack(Number { value: num }));
                 }
 
                 unreachable!();
