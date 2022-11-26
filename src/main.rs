@@ -1,7 +1,6 @@
 use clap::{App, Arg, ArgMatches};
-use spacey::ws::WsVmError;
-use spacey::{WsVm, WsVmConfig};
-use std::time::Instant;
+use spacey::{parser::SourceType, Vm, VmConfig, VmError};
+use std::{str::FromStr, time::Instant};
 
 const ARG_FILE: &str = "file";
 const ARG_HEAP_SIZE: &str = "heap-size";
@@ -9,6 +8,7 @@ const ARG_RAW: &str = "raw";
 const ARG_DEBUG: &str = "debug";
 const ARG_DEBUG_HEAP: &str = "debug-file";
 const ARG_QUIET: &str = "quiet";
+const ARG_SOURCE_TYPE: &str = "source-type";
 
 fn args() -> ArgMatches {
     App::new("spacey")
@@ -66,7 +66,7 @@ fn args() -> ArgMatches {
         .get_matches()
 }
 
-fn main() -> Result<(), WsVmError> {
+fn main() -> Result<(), VmError> {
     let args = args();
     let file_name = args.value_of(ARG_FILE).unwrap();
     let heap_size = match args.value_of(ARG_HEAP_SIZE) {
@@ -77,14 +77,23 @@ fn main() -> Result<(), WsVmError> {
     let debug = args.is_present(ARG_DEBUG);
     let debug_heap = args.is_present(ARG_DEBUG_HEAP);
     let quiet = args.is_present(ARG_QUIET);
+    let source_type = args.value_of(ARG_SOURCE_TYPE).unwrap();
     if !quiet {
         println!(
         "initializing, loading and parsing the provided source, creating the virtual machine..."
     );
     }
     let start = Instant::now();
-    let config = WsVmConfig::new(file_name, heap_size, raw, debug, debug_heap, false);
-    let mut interpreter = WsVm::new(config)?;
+    let config = VmConfig::new(
+        file_name,
+        SourceType::from_str(source_type).unwrap(),
+        heap_size,
+        raw,
+        debug,
+        debug_heap,
+        false,
+    );
+    let mut interpreter = Vm::new(config)?;
     let end = Instant::now();
     if !quiet {
         println!(

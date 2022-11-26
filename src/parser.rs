@@ -1,11 +1,30 @@
 use std::{
     error::Error,
     fmt::{Debug, Display},
+    str::FromStr,
 };
 
 use wasm_bindgen::JsValue;
 
 use crate::Instruction;
+
+pub enum SourceType {
+    Whitespace,
+    Malbolge,
+    Brainfuck,
+}
+
+impl FromStr for SourceType {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "whitespace" => Ok(SourceType::Whitespace),
+            "malbolge" => Ok(SourceType::Malbolge),
+            "brainfuck" => Ok(SourceType::Brainfuck),
+            _ => Err(()),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub(crate) enum ParseErrorKind {
@@ -71,17 +90,11 @@ impl Display for ParseError {
     }
 }
 
-pub(crate) trait Instr: Debug {
+pub trait Instr: Debug {
     fn translate(&self) -> Result<Instruction, ParseError>;
 }
 
-impl PartialEq for Box<dyn Instr> {
-    fn eq(&self, other: &Self) -> bool {
-        true
-    }
-}
-
-pub(crate) trait Parser {
+pub trait Parser {
     fn instruction(&mut self) -> Option<Result<Box<dyn Instr>, ParseError>>;
 }
 

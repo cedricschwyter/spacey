@@ -1,11 +1,24 @@
+use std::rc::Rc;
+
 #[derive(Debug, PartialEq, Clone, Copy)]
+pub struct Number {
+    pub value: i32,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+pub struct Label {
+    pub value: Rc<str>,
+    pub index: usize,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Instruction {
-    PushStack(i32),
+    PushStack(Number),
     DuplicateStack,
-    CopyNthStack(i32),
+    CopyNthStack(Number),
     SwapStack,
     DiscardStack,
-    SlideNStack(i32),
+    SlideNStack(Number),
     Add,
     Subtract,
     Multiply,
@@ -13,11 +26,11 @@ pub enum Instruction {
     Modulo,
     StoreHeap,
     RetrieveHeap,
-    Mark(i32),
-    Call(i32),
-    Jump(i32),
-    JumpZero(i32),
-    JumpNegative(i32),
+    Mark(Label),
+    Call(Label),
+    Jump(Label),
+    JumpZero(Label),
+    JumpNegative(Label),
     Return,
     Exit,
     OutCharacter,

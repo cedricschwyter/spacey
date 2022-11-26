@@ -1,4 +1,4 @@
-use crate::parser::ParseError;
+use crate::parser::{ParseError, SourceType};
 use crate::ws::{WsCommandKind, WsImpKind, WsParamKind};
 use crate::{Instruction, WsParser};
 #[cfg(not(target_arch = "wasm32"))]
@@ -28,6 +28,7 @@ pub struct Vm {
 /// Configuration options for the interpreter
 #[wasm_bindgen]
 pub struct VmConfig {
+    source_type: SourceType,
     #[cfg(not(target_arch = "wasm32"))]
     file_name: String,
     #[cfg(target_arch = "wasm32")]
@@ -44,7 +45,8 @@ pub struct VmConfig {
 impl VmConfig {
     /// Creates a new interpreter config with the given arguments
     ///
-    /// - `source` the whitespace source as a String
+    /// - `source` the source as a String
+    /// - `source_type` the type of the source
     /// - `heap_size` the size of the heap address space (each address holds an i32)
     /// - `raw` print the raw instructions of the parsed source file to stdout
     /// - `debug` print debugging information to stdout when executing an instruction
@@ -52,6 +54,7 @@ impl VmConfig {
     #[wasm_bindgen(constructor)]
     pub fn new(
         source: &str,
+        source_type: SourceType,
         heap_size: usize,
         raw: bool,
         debug: bool,
@@ -59,6 +62,7 @@ impl VmConfig {
         suppress_output: bool,
     ) -> VmConfig {
         VmConfig {
+            source_type,
             source: source.to_string(),
             heap_size,
             raw,
@@ -70,9 +74,11 @@ impl VmConfig {
 
     /// Returns a default interpreter configuration with the default heap size
     ///
-    /// - `source` the whitespace source as a String
-    pub fn default_heap(source: &str) -> VmConfig {
+    /// - `source` the source as a String
+    /// - `source_type` the type of the source
+    pub fn default_heap(source: &str, source_type: SourceType) -> VmConfig {
         VmConfig {
+            source_type,
             source: source.to_string(),
             heap_size: DEFAULT_HEAP_SIZE,
             raw: false,
@@ -84,9 +90,11 @@ impl VmConfig {
 
     /// Returns a default interpreter configuration with no heap
     ///
-    /// - `source` the whitespace source as a String
-    pub fn default_no_heap(source: &str) -> VmConfig {
+    /// - `source` the source as a String
+    /// - `source_type` the type of the source
+    pub fn default_no_heap(source: &str, source_type: SourceType) -> VmConfig {
         VmConfig {
+            source_type,
             source: source.to_string(),
             heap_size: 0,
             raw: false,
@@ -98,9 +106,11 @@ impl VmConfig {
 
     /// Returns a default interpreter configuration with the default heap size, suppressing output
     ///
-    /// - `source` the whitespace source as a String
-    pub fn default_heap_suppressed(source: &str) -> VmConfig {
+    /// - `source` the source as a String
+    /// - `source_type` the type of the source
+    pub fn default_heap_suppressed(source: &str, source_type: SourceType) -> VmConfig {
         VmConfig {
+            source_type,
             source: source.to_string(),
             heap_size: DEFAULT_HEAP_SIZE,
             raw: false,
@@ -112,9 +122,11 @@ impl VmConfig {
 
     /// Returns a default interpreter configuration with no heap, suppressing output
     ///
-    /// - `source` the whitespace source as a String
-    pub fn default_no_heap_suppressed(source: &str) -> VmConfig {
+    /// - `source` the source as a String
+    /// - `source_type` the type of the source
+    pub fn default_no_heap_suppressed(source: &str, source_type: SourceType) -> VmConfig {
         VmConfig {
+            source_type,
             source: source.to_string(),
             heap_size: 0,
             raw: false,
@@ -126,9 +138,11 @@ impl VmConfig {
 
     /// Returns a default debug interpreter configuration with the default heap size
     ///
-    /// - `source` the whitespace source as a String
-    pub fn debug_heap(source: &str) -> VmConfig {
+    /// - `source` the source as a String
+    /// - `source_type` the type of the source
+    pub fn debug_heap(source: &str, source_type: SourceType) -> VmConfig {
         VmConfig {
+            source_type,
             source: source.to_string(),
             heap_size: DEFAULT_HEAP_SIZE,
             raw: false,
@@ -140,9 +154,11 @@ impl VmConfig {
 
     /// Returns a default debug interpreter configuration with no heap
     ///
-    /// - `source` the whitespace source as a String
-    pub fn debug_no_heap(source: &str) -> VmConfig {
+    /// - `source` the source as a String
+    /// - `source_type` the type of the source
+    pub fn debug_no_heap(source: &str, source_type: SourceType) -> VmConfig {
         VmConfig {
+            source_type,
             source: source.to_string(),
             heap_size: 0,
             raw: false,
@@ -155,9 +171,11 @@ impl VmConfig {
     /// Returns a default debug interpreter configuration to only compute the intermediate
     /// representation of the source
     ///
-    /// - `source` the whitespace source as a String
-    pub fn raw(source: &str) -> VmConfig {
+    /// - `source` the source as a String
+    /// - `source_type` the type of the source
+    pub fn raw(source: &str, source_type: SourceType) -> VmConfig {
         VmConfig {
+            source_type,
             source: source.to_string(),
             heap_size: 0,
             raw: true,
@@ -172,13 +190,15 @@ impl VmConfig {
 impl VmConfig {
     /// Creates a new interpreter config with the given arguments
     ///
-    /// - `file_name` the path to the whitespace source file on disk
+    /// - `file_name` the path to the source file on disk
+    /// - `source_type` the type of the source
     /// - `heap_size` the size of the heap address space (each address holds an i32)
     /// - `raw` print the IR of the parsed source file to stdout
     /// - `debug` print debugging information to stdout when executing an instruction
     /// - `debug_heap` print heap dump to stdout when executing an instruction
     pub fn new(
         file_name: &str,
+        source_type: SourceType,
         heap_size: usize,
         raw: bool,
         debug: bool,
@@ -186,6 +206,7 @@ impl VmConfig {
         suppress_output: bool,
     ) -> VmConfig {
         VmConfig {
+            source_type,
             file_name: file_name.to_string(),
             heap_size,
             raw,
@@ -197,9 +218,11 @@ impl VmConfig {
 
     /// Returns a default interpreter configuration with the default heap size
     ///
-    /// `file_name` - the name of the source file on disk
-    pub fn default_heap(file_name: &str) -> VmConfig {
+    /// - `file_name` the name of the source file on disk
+    /// - `source_type` the type of the source
+    pub fn default_heap(file_name: &str, source_type: SourceType) -> VmConfig {
         VmConfig {
+            source_type,
             file_name: file_name.to_string(),
             heap_size: DEFAULT_HEAP_SIZE,
             raw: false,
@@ -211,9 +234,11 @@ impl VmConfig {
 
     /// Returns a default interpreter configuration with no heap
     ///
-    /// `file_name` - the name of the source file on disk
-    pub fn default_no_heap(file_name: &str) -> VmConfig {
+    /// - `file_name` the name of the source file on disk
+    /// - `source_type` the type of the source
+    pub fn default_no_heap(file_name: &str, source_type: SourceType) -> VmConfig {
         VmConfig {
+            source_type,
             file_name: file_name.to_string(),
             heap_size: 0,
             raw: false,
@@ -225,9 +250,11 @@ impl VmConfig {
 
     /// Returns a default interpreter configuration with the default heap size, suppressing output
     ///
-    /// `file_name` - the name of the source file on disk
-    pub fn default_heap_suppressed(file_name: &str) -> VmConfig {
+    /// - `file_name` the name of the source file on disk
+    /// - `source_type` the type of the source
+    pub fn default_heap_suppressed(file_name: &str, source_type: SourceType) -> VmConfig {
         VmConfig {
+            source_type,
             file_name: file_name.to_string(),
             heap_size: DEFAULT_HEAP_SIZE,
             raw: false,
@@ -239,9 +266,11 @@ impl VmConfig {
 
     /// Returns a default interpreter configuration with no heap, suppressing output
     ///
-    /// `file_name` - the name of the source file on disk
-    pub fn default_no_heap_suppressed(file_name: &str) -> VmConfig {
+    /// - `file_name` the name of the source file on disk
+    /// - `source_type` the type of the source
+    pub fn default_no_heap_suppressed(file_name: &str, source_type: SourceType) -> VmConfig {
         VmConfig {
+            source_type,
             file_name: file_name.to_string(),
             heap_size: 0,
             raw: false,
@@ -253,9 +282,11 @@ impl VmConfig {
 
     /// Returns a default debug interpreter configuration with the default heap size
     ///
-    /// `file_name` - the name of the source file on disk
-    pub fn debug_heap(file_name: &str) -> VmConfig {
+    /// - `file_name` the name of the source file on disk
+    /// - `source_type` the type of the source
+    pub fn debug_heap(file_name: &str, source_type: SourceType) -> VmConfig {
         VmConfig {
+            source_type,
             file_name: file_name.to_string(),
             heap_size: DEFAULT_HEAP_SIZE,
             raw: false,
@@ -267,9 +298,11 @@ impl VmConfig {
 
     /// Returns a default debug interpreter configuration with no heap
     ///
-    /// `file_name` - the name of the source file on disk
-    pub fn debug_no_heap(file_name: &str) -> VmConfig {
+    /// - `file_name` the name of the source file on disk
+    /// - `source_type` the type of the source
+    pub fn debug_no_heap(file_name: &str, source_type: SourceType) -> VmConfig {
         VmConfig {
+            source_type,
             file_name: file_name.to_string(),
             heap_size: 0,
             raw: false,
@@ -282,9 +315,11 @@ impl VmConfig {
     /// Returns a default debug interpreter configuration to only compute the intermediate
     /// representation of the source
     ///
-    /// `file_name` - the name of the source file on disk
-    pub fn raw(file_name: &str) -> VmConfig {
+    /// - `file_name` the name of the source file on disk
+    /// - `source_type` the type of the source
+    pub fn raw(file_name: &str, source_type: SourceType) -> VmConfig {
         VmConfig {
+            source_type,
             file_name: file_name.to_string(),
             heap_size: 0,
             raw: true,
@@ -385,17 +420,24 @@ impl Vm {
         for (i, instr) in instructions.iter().enumerate() {
             match instr {
                 Instruction::Mark(label) => {
-                    labels.insert(label, i);
+                    labels.insert(label.value.clone(), i);
                 }
                 _ => (),
             }
         }
 
         for instr in &mut instructions {
-            if let Some(WsParamKind::Label(label, _)) = instr.param.clone() {
-                if let Some(index) = labels.get(&label) {
-                    instr.param = Some(WsParamKind::Label(label, *index));
+            match instr {
+                Instruction::Mark(label)
+                | Instruction::Call(label)
+                | Instruction::Jump(label)
+                | Instruction::JumpZero(label)
+                | Instruction::JumpNegative(label) => {
+                    if let Some(index) = labels.get(&label.value) {
+                        label.index = *index;
+                    }
                 }
+                _ => {}
             }
         }
 
@@ -430,7 +472,7 @@ impl Vm {
         }
 
         let last = &self.instructions[self.instruction_pointer - 1];
-        if last.cmd != WsCommandKind::Exit {
+        if *last != Instruction::Exit {
             return VmErrorKind::NoTermination(last.clone()).throw();
         }
 
@@ -444,406 +486,6 @@ impl Vm {
         self.heap = vec![0; self.heap.len()];
         self.instruction_pointer = 0;
         self.done = false;
-    }
-
-    fn stack(&mut self, ip: usize) -> Result<(), VmError> {
-        let instr = &self.instructions[ip];
-        match instr.cmd {
-            WsCommandKind::PushStack => {
-                if let Some(WsParamKind::Number(val)) = instr.param {
-                    self.stack.push(val);
-
-                    return Ok(());
-                }
-
-                VmErrorKind::ParseLogicError(instr.clone()).throw()
-            }
-            WsCommandKind::DuplicateStack => {
-                if let Some(val) = self.stack.pop() {
-                    self.stack.push(val);
-                    self.stack.push(val);
-
-                    return Ok(());
-                }
-
-                VmErrorKind::StackUnderflow(instr.clone()).throw()
-            }
-            WsCommandKind::CopyNthStack => {
-                if let Some(WsParamKind::Number(addr)) = instr.param {
-                    if addr < 0 || addr as usize >= self.stack.len() {
-                        return VmErrorKind::NumberOutOfBoundsError(
-                            instr.clone(),
-                            addr,
-                            0,
-                            self.stack.len() as i32 - 1,
-                        )
-                        .throw();
-                    }
-                    let addr = addr as usize;
-                    let val = self.stack[addr];
-                    self.stack.push(val);
-
-                    return Ok(());
-                }
-
-                VmErrorKind::ParseLogicError(instr.clone()).throw()
-            }
-            WsCommandKind::SwapStack => {
-                if let Some(val) = self.stack.pop() {
-                    if let Some(other) = self.stack.pop() {
-                        self.stack.push(val);
-                        self.stack.push(other);
-
-                        return Ok(());
-                    }
-
-                    return VmErrorKind::StackUnderflow(instr.clone()).throw();
-                }
-                VmErrorKind::StackUnderflow(instr.clone()).throw()
-            }
-            WsCommandKind::DiscardStack => {
-                if self.stack.pop().is_some() {
-                    return Ok(());
-                }
-
-                VmErrorKind::StackUnderflow(instr.clone()).throw()
-            }
-            WsCommandKind::SlideNStack => {
-                if let Some(top) = self.stack.pop() {
-                    if let Some(WsParamKind::Number(val)) = instr.param {
-                        if val < 0 {
-                            return VmErrorKind::NumberOutOfBoundsError(
-                                instr.clone(),
-                                val,
-                                0,
-                                i32::MAX,
-                            )
-                            .throw();
-                        }
-                        for _i in 0..val {
-                            self.stack.pop();
-                        }
-                        self.stack.push(top);
-
-                        return Ok(());
-                    }
-
-                    return VmErrorKind::ParseLogicError(instr.clone()).throw();
-                }
-
-                VmErrorKind::StackUnderflow(instr.clone()).throw()
-            }
-            _ => VmErrorKind::ParseLogicError(instr.clone()).throw(),
-        }
-    }
-
-    fn arithmetic(&mut self, ip: usize) -> Result<(), VmError> {
-        let instr = &self.instructions[ip];
-        match instr.cmd {
-            WsCommandKind::Add => {
-                if let Some(right) = self.stack.pop() {
-                    if let Some(left) = self.stack.pop() {
-                        self.stack.push(left + right);
-
-                        return Ok(());
-                    }
-                }
-
-                VmErrorKind::StackUnderflow(instr.clone()).throw()
-            }
-            WsCommandKind::Subtract => {
-                if let Some(right) = self.stack.pop() {
-                    if let Some(left) = self.stack.pop() {
-                        self.stack.push(left - right);
-
-                        return Ok(());
-                    }
-                }
-
-                VmErrorKind::StackUnderflow(instr.clone()).throw()
-            }
-            WsCommandKind::Multiply => {
-                if let Some(right) = self.stack.pop() {
-                    if let Some(left) = self.stack.pop() {
-                        self.stack.push(left * right);
-
-                        return Ok(());
-                    }
-                }
-
-                VmErrorKind::StackUnderflow(instr.clone()).throw()
-            }
-            WsCommandKind::IntegerDivision => {
-                if let Some(right) = self.stack.pop() {
-                    if let Some(left) = self.stack.pop() {
-                        self.stack.push(left / right);
-
-                        return Ok(());
-                    }
-                }
-
-                VmErrorKind::StackUnderflow(instr.clone()).throw()
-            }
-            WsCommandKind::Modulo => {
-                if let Some(right) = self.stack.pop() {
-                    if let Some(left) = self.stack.pop() {
-                        self.stack.push(left % right);
-
-                        return Ok(());
-                    }
-                }
-
-                VmErrorKind::StackUnderflow(instr.clone()).throw()
-            }
-            _ => VmErrorKind::ParseLogicError(instr.clone()).throw(),
-        }
-    }
-
-    fn heap(&mut self, ip: usize) -> Result<(), VmError> {
-        let instr = &self.instructions[ip];
-        match instr.cmd {
-            WsCommandKind::StoreHeap => {
-                if let Some(val) = self.stack.pop() {
-                    if let Some(addr) = self.stack.pop() {
-                        if addr < 0 || addr as usize >= self.heap.len() {
-                            return VmErrorKind::NumberOutOfBoundsError(
-                                instr.clone(),
-                                addr,
-                                0,
-                                self.heap.len() as i32 - 1,
-                            )
-                            .throw();
-                        }
-
-                        self.heap[addr as usize] = val;
-
-                        return Ok(());
-                    }
-                }
-
-                VmErrorKind::StackUnderflow(instr.clone()).throw()
-            }
-            WsCommandKind::RetrieveHeap => {
-                if let Some(addr) = self.stack.pop() {
-                    if addr < 0 || addr as usize >= self.heap.len() {
-                        return VmErrorKind::NumberOutOfBoundsError(
-                            instr.clone(),
-                            addr,
-                            0,
-                            self.heap.len() as i32 - 1,
-                        )
-                        .throw();
-                    }
-
-                    self.stack.push(self.heap[addr as usize]);
-
-                    return Ok(());
-                }
-
-                VmErrorKind::StackUnderflow(instr.clone()).throw()
-            }
-            _ => VmErrorKind::ParseLogicError(instr.clone()).throw(),
-        }
-    }
-
-    fn flow(&mut self, ip: usize) -> Result<(), VmError> {
-        let instr = &self.instructions[ip];
-        match instr.cmd {
-            WsCommandKind::Mark => Ok(()),
-            WsCommandKind::Call => {
-                if let Some(WsParamKind::Label(_, index)) = &instr.param {
-                    self.call_stack.push(self.instruction_pointer);
-                    self.instruction_pointer = *index;
-
-                    return Ok(());
-                }
-
-                VmErrorKind::ParseLogicError(instr.clone()).throw()
-            }
-            WsCommandKind::Jump => {
-                if let Some(WsParamKind::Label(_, index)) = &instr.param {
-                    self.instruction_pointer = *index;
-
-                    return Ok(());
-                }
-
-                VmErrorKind::ParseLogicError(instr.clone()).throw()
-            }
-            WsCommandKind::JumpZero => {
-                if let Some(val) = self.stack.pop() {
-                    if val != 0 {
-                        return Ok(());
-                    }
-                    if let Some(WsParamKind::Label(_, index)) = &instr.param {
-                        self.instruction_pointer = *index;
-
-                        return Ok(());
-                    }
-                    return VmErrorKind::StackUnderflow(instr.clone()).throw();
-                }
-
-                VmErrorKind::ParseLogicError(instr.clone()).throw()
-            }
-            WsCommandKind::JumpNegative => {
-                if let Some(val) = self.stack.pop() {
-                    if val >= 0 {
-                        return Ok(());
-                    }
-                    if let Some(WsParamKind::Label(_, index)) = &instr.param {
-                        self.instruction_pointer = *index;
-
-                        return Ok(());
-                    }
-
-                    return VmErrorKind::StackUnderflow(instr.clone()).throw();
-                }
-
-                VmErrorKind::ParseLogicError(instr.clone()).throw()
-            }
-            WsCommandKind::Return => {
-                if let Some(frame) = self.call_stack.pop() {
-                    self.instruction_pointer = frame;
-
-                    return Ok(());
-                }
-
-                VmErrorKind::StackUnderflow(instr.clone()).throw()
-            }
-            WsCommandKind::Exit => {
-                self.done = true;
-
-                Ok(())
-            }
-            _ => VmErrorKind::ParseLogicError(instr.clone()).throw(),
-        }
-    }
-
-    fn io(&mut self, ip: usize) -> Result<(), VmError> {
-        let instr = &self.instructions[ip];
-        match instr.cmd {
-            WsCommandKind::OutCharacter => {
-                if let Some(character) = self.stack.pop() {
-                    if character < 0 {
-                        return VmErrorKind::NumberOutOfBoundsError(
-                            instr.clone(),
-                            character,
-                            0,
-                            i32::MAX,
-                        )
-                        .throw();
-                    }
-                    if self.config.suppress_output {
-                        return Ok(());
-                    }
-                    if let Some(character) = char::from_u32(character as u32) {
-                        match write!(stdout(), "{}", character) {
-                            Ok(val) => val,
-                            Err(_) => return VmErrorKind::IOError(instr.clone()).throw(),
-                        };
-                        match stdout().flush() {
-                            Ok(val) => val,
-                            Err(_) => return VmErrorKind::IOError(instr.clone()).throw(),
-                        };
-
-                        return Ok(());
-                    }
-                }
-
-                VmErrorKind::StackUnderflow(instr.clone()).throw()
-            }
-            WsCommandKind::OutInteger => {
-                if let Some(number) = self.stack.pop() {
-                    if self.config.suppress_output {
-                        return Ok(());
-                    }
-                    match write!(stdout(), "{}", number) {
-                        Ok(val) => val,
-                        Err(_) => return VmErrorKind::IOError(instr.clone()).throw(),
-                    };
-                    match stdout().flush() {
-                        Ok(val) => val,
-                        Err(_) => return VmErrorKind::IOError(instr.clone()).throw(),
-                    };
-
-                    return Ok(());
-                }
-
-                VmErrorKind::StackUnderflow(instr.clone()).throw()
-            }
-            WsCommandKind::ReadCharacter => {
-                #[cfg(target_arch = "wasm32")]
-                unimplemented!();
-                #[cfg(not(target_arch = "wasm32"))]
-                if let Some(addr) = self.stack.pop() {
-                    if addr < 0 || addr as usize >= self.heap.len() {
-                        return VmErrorKind::NumberOutOfBoundsError(
-                            instr.clone(),
-                            addr,
-                            0,
-                            self.heap.len() as i32 - 1,
-                        )
-                        .throw();
-                    }
-
-                    match stdout().flush() {
-                        Ok(val) => val,
-                        Err(_) => return VmErrorKind::IOError(instr.clone()).throw(),
-                    };
-                    return match Getch::new().getch() {
-                        Ok(val) => {
-                            self.heap[addr as usize] = val as i32;
-                            match write!(stdout(), "{}", char::from_u32(val as u32).unwrap()) {
-                                Ok(val) => val,
-                                Err(_) => return VmErrorKind::IOError(instr.clone()).throw(),
-                            };
-                            match stdout().flush() {
-                                Ok(val) => val,
-                                Err(_) => return VmErrorKind::IOError(instr.clone()).throw(),
-                            };
-
-                            Ok(())
-                        }
-                        Err(_) => VmErrorKind::IOError(instr.clone()).throw(),
-                    };
-                }
-
-                VmErrorKind::StackUnderflow(instr.clone()).throw()
-            }
-            WsCommandKind::ReadInteger => {
-                if let Some(addr) = self.stack.pop() {
-                    if addr < 0 || addr as usize >= self.heap.len() {
-                        return VmErrorKind::NumberOutOfBoundsError(
-                            instr.clone(),
-                            addr,
-                            0,
-                            self.heap.len() as i32 - 1,
-                        )
-                        .throw();
-                    }
-                    match stdout().flush() {
-                        Ok(val) => val,
-                        Err(_) => return VmErrorKind::IOError(instr.clone()).throw(),
-                    };
-                    let mut input_text = String::new();
-                    match stdin().read_line(&mut input_text) {
-                        Ok(val) => val,
-                        Err(_) => return VmErrorKind::IOError(instr.clone()).throw(),
-                    };
-
-                    let trimmed = input_text.trim();
-                    let num = match trimmed.parse::<i32>() {
-                        Ok(val) => val,
-                        Err(_) => return VmErrorKind::IOError(instr.clone()).throw(),
-                    };
-                    self.heap[addr as usize] = num;
-
-                    return Ok(());
-                }
-
-                VmErrorKind::IOError(instr.clone()).throw()
-            }
-            _ => VmErrorKind::ParseLogicError(instr.clone()).throw(),
-        }
     }
 
     fn generate_debug_heap_dump(&self) -> BTreeMap<usize, i32> {
@@ -869,28 +511,48 @@ impl Vm {
         if self.config.debug_heap {
             dbg!(self.generate_debug_heap_dump());
         }
-        let res = match self.instructions[ip].imp {
-            WsImpKind::Stack => self.stack(ip),
-            WsImpKind::Arithmetic => self.arithmetic(ip),
-            WsImpKind::Heap => self.heap(ip),
-            WsImpKind::Flow => self.flow(ip),
-            WsImpKind::IO => self.io(ip),
+        let res = match &self.instructions[ip] {
+            Instruction::PushStack(num) => {}
+            Instruction::DuplicateStack => {}
+            Instruction::CopyNthStack(num) => {}
+            Instruction::SwapStack => {}
+            Instruction::DiscardStack => {}
+            Instruction::SlideNStack(num) => {}
+            Instruction::Add => {}
+            Instruction::Subtract => {}
+            Instruction::Multiply => {}
+            Instruction::IntegerDivision => {}
+            Instruction::Modulo => {}
+            Instruction::StoreHeap => {}
+            Instruction::RetrieveHeap => {}
+            Instruction::Mark(label) => {}
+            Instruction::Call(label) => {}
+            Instruction::Jump(label) => {}
+            Instruction::JumpZero(label) => {}
+            Instruction::JumpNegative(label) => {}
+            Instruction::Return => {}
+            Instruction::Exit => {}
+            Instruction::OutCharacter => {}
+            Instruction::OutInteger => {}
+            Instruction::ReadCharacter => {}
+            Instruction::ReadInteger => {}
         };
 
         self.instruction_pointer += 1;
 
-        res
+        Ok(res)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{VmConfig, VmError, WsVm};
+    use super::{SourceType, Vm, VmConfig, VmError};
 
     #[test]
     fn interpret_stack() -> Result<(), VmError> {
-        let config = VmConfig::default_no_heap_suppressed("ws/interpret_stack.ws");
-        let mut interpreter = WsVm::new(config)?;
+        let config =
+            VmConfig::default_no_heap_suppressed("ws/interpret_stack.ws", SourceType::Whitespace);
+        let mut interpreter = Vm::new(config)?;
 
         interpreter.run()?;
 
@@ -902,8 +564,11 @@ mod tests {
 
     #[test]
     fn interpret_arithmetic() -> Result<(), VmError> {
-        let config = VmConfig::default_no_heap_suppressed("ws/interpret_arithmetic.ws");
-        let mut interpreter = WsVm::new(config)?;
+        let config = VmConfig::default_no_heap_suppressed(
+            "ws/interpret_arithmetic.ws",
+            SourceType::Whitespace,
+        );
+        let mut interpreter = Vm::new(config)?;
 
         interpreter.run()?;
 
@@ -915,8 +580,9 @@ mod tests {
 
     #[test]
     fn interpret_heap() -> Result<(), VmError> {
-        let config = VmConfig::default_heap_suppressed("ws/interpret_heap.ws");
-        let mut interpreter = WsVm::new(config)?;
+        let config =
+            VmConfig::default_heap_suppressed("ws/interpret_heap.ws", SourceType::Whitespace);
+        let mut interpreter = Vm::new(config)?;
 
         interpreter.run()?;
 
@@ -927,19 +593,21 @@ mod tests {
 
     #[test]
     fn interpret_flow() -> Result<(), VmError> {
-        let config = VmConfig::default_no_heap_suppressed("ws/interpret_flow.ws");
-        let mut interpreter = WsVm::new(config)?;
+        let config =
+            VmConfig::default_no_heap_suppressed("ws/interpret_flow.ws", SourceType::Whitespace);
+        let mut interpreter = Vm::new(config)?;
 
         interpreter.run()?;
-        assert_eq!(interpreter.stack, vec![]);
+        assert_eq!(interpreter.stack, Vec::<i32>::new());
 
         Ok(())
     }
 
     #[test]
     fn interpret_io() -> Result<(), VmError> {
-        let config = VmConfig::default_no_heap_suppressed("ws/interpret_io.ws");
-        let mut interpreter = WsVm::new(config)?;
+        let config =
+            VmConfig::default_no_heap_suppressed("ws/interpret_io.ws", SourceType::Whitespace);
+        let mut interpreter = Vm::new(config)?;
 
         interpreter.run()?;
 
