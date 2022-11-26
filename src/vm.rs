@@ -297,6 +297,7 @@ impl VmConfig {
 
 #[derive(Debug)]
 enum VmErrorKind {
+    TranslateError(ParseError),
     ParseError(ParseError),
     ParseLogicError(Instruction),
     StackUnderflow(Instruction),
@@ -314,6 +315,7 @@ impl Display for VmErrorKind {
 impl VmErrorKind {
     fn throw<T>(self) -> Result<T, VmError> {
         let msg = match &self {
+            VmErrorKind::TranslateError(err) => format!("error during instruction translation: {}", err),
             VmErrorKind::ParseLogicError(instr) => format!("the parser delivered an inconsistent state, something is severely broken from an application logic point of view. in other words: engineer fucked up. if you receive this error message please make sure to report this as an issue (please also supply the whitespace source) over at https://github.com/d3psi/spacey/issues. thank you. issue occurred when attempting to execute: {:?}", instr),
             VmErrorKind::StackUnderflow(instr) => format!("stack is empty - failed executing: {:?}", instr),
             VmErrorKind::NumberOutOfBoundsError(instr, num, low, high) => format!("number is out of bounds for: {:?}, expected in the closed interval bounded by {} and {}, but was {}", instr, low, high, num),
@@ -367,6 +369,10 @@ impl Vm {
             if config.raw {
                 dbg!(&instr);
             }
+            let instr = match instr.translate() {
+                Ok(instr) => instr,
+                Err(err) => return VmErrorKind::TranslateError(err).throw(),
+            };
             instructions.push(instr);
         }
         let stack = vec![];
@@ -377,10 +383,11 @@ impl Vm {
         let done = false;
 
         for (i, instr) in instructions.iter().enumerate() {
-            if instr.cmd == WsCommandKind::Mark {
-                if let Some(WsParamKind::Label(label, _)) = instr.param.clone() {
+            match instr {
+                Instruction::Mark(label) => {
                     labels.insert(label, i);
                 }
+                _ => (),
             }
         }
 
