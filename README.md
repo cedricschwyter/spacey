@@ -9,7 +9,7 @@ a tiny, performant, wasm-ready stack machine/virtual machine in rust
 - [x] whitespace
 - [ ] malbolge
 - [ ] brainfuck
-- [ ] whatever other esolang/stack machine language we want to create a backend for
+- [ ] whatever other language we want to create a backend for
 
 ## crates.io and npmjs.org
 the library crate is available both as a standard crate [spacey](https://crates.io/crates/spacey) as well as a bundled wasm package on npm under [node-spacey](https://www.npmjs.com/package/node-spacey).
