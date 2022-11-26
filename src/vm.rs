@@ -1016,8 +1016,10 @@ mod tests {
 
     #[test]
     fn interpret_stack() -> Result<(), VmError> {
-        let config =
-            VmConfig::default_no_heap_suppressed("ws/interpret_stack.ws", SourceType::Whitespace);
+        let config = VmConfig::default_no_heap_suppressed(
+            "resources/interpret_stack.ws",
+            SourceType::Whitespace,
+        );
         let mut interpreter = Vm::new(config)?;
 
         interpreter.run()?;
@@ -1031,7 +1033,7 @@ mod tests {
     #[test]
     fn interpret_arithmetic() -> Result<(), VmError> {
         let config = VmConfig::default_no_heap_suppressed(
-            "ws/interpret_arithmetic.ws",
+            "resources/interpret_arithmetic.ws",
             SourceType::Whitespace,
         );
         let mut interpreter = Vm::new(config)?;
@@ -1046,8 +1048,10 @@ mod tests {
 
     #[test]
     fn interpret_heap() -> Result<(), VmError> {
-        let config =
-            VmConfig::default_heap_suppressed("ws/interpret_heap.ws", SourceType::Whitespace);
+        let config = VmConfig::default_heap_suppressed(
+            "resources/interpret_heap.ws",
+            SourceType::Whitespace,
+        );
         let mut interpreter = Vm::new(config)?;
 
         interpreter.run()?;
@@ -1059,8 +1063,10 @@ mod tests {
 
     #[test]
     fn interpret_flow() -> Result<(), VmError> {
-        let config =
-            VmConfig::default_no_heap_suppressed("ws/interpret_flow.ws", SourceType::Whitespace);
+        let config = VmConfig::default_no_heap_suppressed(
+            "resources/interpret_flow.ws",
+            SourceType::Whitespace,
+        );
         let mut interpreter = Vm::new(config)?;
 
         interpreter.run()?;
@@ -1071,8 +1077,10 @@ mod tests {
 
     #[test]
     fn interpret_io() -> Result<(), VmError> {
-        let config =
-            VmConfig::default_no_heap_suppressed("ws/interpret_io.ws", SourceType::Whitespace);
+        let config = VmConfig::default_no_heap_suppressed(
+            "resources/interpret_io.ws",
+            SourceType::Whitespace,
+        );
         let mut interpreter = Vm::new(config)?;
 
         interpreter.run()?;
