@@ -1,5 +1,4 @@
 use crate::parser::{ParseError, SourceType};
-use crate::ws::{WsCommandKind, WsImpKind, WsParamKind};
 use crate::{Instruction, WsParser};
 #[cfg(not(target_arch = "wasm32"))]
 use getch::Getch;
@@ -334,7 +333,6 @@ impl VmConfig {
 enum VmErrorKind {
     TranslateError(ParseError),
     ParseError(ParseError),
-    ParseLogicError(Instruction),
     StackUnderflow(Instruction),
     NumberOutOfBoundsError(Instruction, i32, i32, i32),
     NoTermination(Instruction),
@@ -351,7 +349,6 @@ impl VmErrorKind {
     fn throw<T>(self) -> Result<T, VmError> {
         let msg = match &self {
             VmErrorKind::TranslateError(err) => format!("error during instruction translation: {}", err),
-            VmErrorKind::ParseLogicError(instr) => format!("the parser delivered an inconsistent state, something is severely broken from an application logic point of view. in other words: engineer fucked up. if you receive this error message please make sure to report this as an issue (please also supply the whitespace source) over at https://github.com/d3psi/spacey/issues. thank you. issue occurred when attempting to execute: {:?}", instr),
             VmErrorKind::StackUnderflow(instr) => format!("stack is empty - failed executing: {:?}", instr),
             VmErrorKind::NumberOutOfBoundsError(instr, num, low, high) => format!("number is out of bounds for: {:?}, expected in the closed interval bounded by {} and {}, but was {}", instr, low, high, num),
             VmErrorKind::NoTermination(instr) => format!("no termination instruction after last executed instruction: {:?}", instr),
@@ -467,8 +464,8 @@ impl Vm {
 
     /// Executes all instructions - runs the program.
     pub fn run(&mut self) -> Result<(), VmError> {
-        while let Some(ip) = self.next_instruction() {
-            self.exec(ip)?;
+        while let Some(_) = self.next_instruction() {
+            self.exec()?;
         }
 
         let last = &self.instructions[self.instruction_pointer - 1];
@@ -498,10 +495,469 @@ impl Vm {
         heap_map
     }
 
-    /// Executes a single instruction in the interpreter
-    ///
-    /// `instr` - the instruction to execute
-    pub fn exec(&mut self, ip: usize) -> Result<(), VmError> {
+    fn push_stack(&mut self) -> Result<(), VmError> {
+        if let Instruction::PushStack(num) = self.instructions[self.instruction_pointer] {
+            self.stack.push(num.value);
+
+            return Ok(());
+        };
+
+        unreachable!();
+    }
+
+    fn duplicate_stack(&mut self) -> Result<(), VmError> {
+        if let Some(val) = self.stack.pop() {
+            self.stack.push(val);
+            self.stack.push(val);
+
+            return Ok(());
+        }
+
+        VmErrorKind::StackUnderflow(self.instructions[self.instruction_pointer].clone()).throw()
+    }
+
+    fn copy_nth_stack(&mut self) -> Result<(), VmError> {
+        if let Instruction::CopyNthStack(num) = self.instructions[self.instruction_pointer] {
+            let addr = num.value;
+            if addr < 0 || addr as usize >= self.stack.len() {
+                return VmErrorKind::NumberOutOfBoundsError(
+                    self.instructions[self.instruction_pointer].clone(),
+                    addr,
+                    0,
+                    self.stack.len() as i32 - 1,
+                )
+                .throw();
+            }
+            let addr = addr as usize;
+            let val = self.stack[addr];
+            self.stack.push(val);
+
+            return Ok(());
+        }
+
+        unreachable!();
+    }
+
+    fn swap_stack(&mut self) -> Result<(), VmError> {
+        if let Some(val) = self.stack.pop() {
+            if let Some(other) = self.stack.pop() {
+                self.stack.push(val);
+                self.stack.push(other);
+
+                return Ok(());
+            }
+
+            return VmErrorKind::StackUnderflow(
+                self.instructions[self.instruction_pointer].clone(),
+            )
+            .throw();
+        }
+
+        VmErrorKind::StackUnderflow(self.instructions[self.instruction_pointer].clone()).throw()
+    }
+
+    fn discard_stack(&mut self) -> Result<(), VmError> {
+        if self.stack.pop().is_some() {
+            return Ok(());
+        }
+
+        VmErrorKind::StackUnderflow(self.instructions[self.instruction_pointer].clone()).throw()
+    }
+
+    fn slide_n_stack(&mut self) -> Result<(), VmError> {
+        if let Instruction::SlideNStack(num) = self.instructions[self.instruction_pointer] {
+            if let Some(top) = self.stack.pop() {
+                if num.value < 0 {
+                    return VmErrorKind::NumberOutOfBoundsError(
+                        self.instructions[self.instruction_pointer].clone(),
+                        num.value,
+                        0,
+                        i32::MAX,
+                    )
+                    .throw();
+                }
+                for _i in 0..num.value {
+                    self.stack.pop();
+                }
+                self.stack.push(top);
+
+                return Ok(());
+            }
+
+            return VmErrorKind::StackUnderflow(
+                self.instructions[self.instruction_pointer].clone(),
+            )
+            .throw();
+        };
+
+        unreachable!();
+    }
+
+    fn add(&mut self) -> Result<(), VmError> {
+        if let Some(right) = self.stack.pop() {
+            if let Some(left) = self.stack.pop() {
+                self.stack.push(left + right);
+
+                return Ok(());
+            }
+        }
+
+        VmErrorKind::StackUnderflow(self.instructions[self.instruction_pointer].clone()).throw()
+    }
+
+    fn subtract(&mut self) -> Result<(), VmError> {
+        if let Some(right) = self.stack.pop() {
+            if let Some(left) = self.stack.pop() {
+                self.stack.push(left - right);
+
+                return Ok(());
+            }
+        }
+
+        VmErrorKind::StackUnderflow(self.instructions[self.instruction_pointer].clone()).throw()
+    }
+
+    fn multiply(&mut self) -> Result<(), VmError> {
+        if let Some(right) = self.stack.pop() {
+            if let Some(left) = self.stack.pop() {
+                self.stack.push(left * right);
+
+                return Ok(());
+            }
+        }
+
+        VmErrorKind::StackUnderflow(self.instructions[self.instruction_pointer].clone()).throw()
+    }
+
+    fn integer_division(&mut self) -> Result<(), VmError> {
+        if let Some(right) = self.stack.pop() {
+            if let Some(left) = self.stack.pop() {
+                self.stack.push(left / right);
+
+                return Ok(());
+            }
+        }
+
+        VmErrorKind::StackUnderflow(self.instructions[self.instruction_pointer].clone()).throw()
+    }
+
+    fn modulo(&mut self) -> Result<(), VmError> {
+        if let Some(right) = self.stack.pop() {
+            if let Some(left) = self.stack.pop() {
+                self.stack.push(left % right);
+
+                return Ok(());
+            }
+        }
+
+        VmErrorKind::StackUnderflow(self.instructions[self.instruction_pointer].clone()).throw()
+    }
+
+    fn store_heap(&mut self) -> Result<(), VmError> {
+        if let Some(val) = self.stack.pop() {
+            if let Some(addr) = self.stack.pop() {
+                if addr < 0 || addr as usize >= self.heap.len() {
+                    return VmErrorKind::NumberOutOfBoundsError(
+                        self.instructions[self.instruction_pointer].clone(),
+                        addr,
+                        0,
+                        self.heap.len() as i32 - 1,
+                    )
+                    .throw();
+                }
+
+                self.heap[addr as usize] = val;
+
+                return Ok(());
+            }
+        }
+
+        VmErrorKind::StackUnderflow(self.instructions[self.instruction_pointer].clone()).throw()
+    }
+
+    fn retrieve_heap(&mut self) -> Result<(), VmError> {
+        if let Some(addr) = self.stack.pop() {
+            if addr < 0 || addr as usize >= self.heap.len() {
+                return VmErrorKind::NumberOutOfBoundsError(
+                    self.instructions[self.instruction_pointer].clone(),
+                    addr,
+                    0,
+                    self.heap.len() as i32 - 1,
+                )
+                .throw();
+            }
+
+            self.stack.push(self.heap[addr as usize]);
+
+            return Ok(());
+        }
+
+        VmErrorKind::StackUnderflow(self.instructions[self.instruction_pointer].clone()).throw()
+    }
+
+    fn mark(&mut self) -> Result<(), VmError> {
+        Ok(())
+    }
+
+    fn call(&mut self) -> Result<(), VmError> {
+        if let Instruction::Call(label) = &self.instructions[self.instruction_pointer] {
+            self.call_stack.push(self.instruction_pointer);
+            self.instruction_pointer = label.index;
+
+            return Ok(());
+        }
+
+        unreachable!();
+    }
+
+    fn jump(&mut self) -> Result<(), VmError> {
+        if let Instruction::Jump(label) = &self.instructions[self.instruction_pointer] {
+            self.instruction_pointer = label.index;
+
+            return Ok(());
+        }
+
+        unreachable!();
+    }
+
+    fn jump_zero(&mut self) -> Result<(), VmError> {
+        if let Instruction::JumpZero(label) = &self.instructions[self.instruction_pointer] {
+            if let Some(val) = self.stack.pop() {
+                if val != 0 {
+                    return Ok(());
+                }
+                self.instruction_pointer = label.index;
+
+                return Ok(());
+            }
+
+            return VmErrorKind::StackUnderflow(
+                self.instructions[self.instruction_pointer].clone(),
+            )
+            .throw();
+        }
+
+        unreachable!();
+    }
+
+    fn jump_negative(&mut self) -> Result<(), VmError> {
+        if let Instruction::JumpNegative(label) = &self.instructions[self.instruction_pointer] {
+            if let Some(val) = self.stack.pop() {
+                if val >= 0 {
+                    return Ok(());
+                }
+                self.instruction_pointer = label.index;
+
+                return Ok(());
+            }
+            return VmErrorKind::StackUnderflow(
+                self.instructions[self.instruction_pointer].clone(),
+            )
+            .throw();
+        }
+
+        unreachable!();
+    }
+
+    fn r#return(&mut self) -> Result<(), VmError> {
+        if let Some(frame) = self.call_stack.pop() {
+            self.instruction_pointer = frame;
+
+            return Ok(());
+        }
+
+        VmErrorKind::StackUnderflow(self.instructions[self.instruction_pointer].clone()).throw()
+    }
+
+    fn exit(&mut self) -> Result<(), VmError> {
+        self.done = true;
+
+        Ok(())
+    }
+
+    fn out_char(&mut self) -> Result<(), VmError> {
+        if let Some(character) = self.stack.pop() {
+            if character < 0 {
+                return VmErrorKind::NumberOutOfBoundsError(
+                    self.instructions[self.instruction_pointer].clone(),
+                    character,
+                    0,
+                    i32::MAX,
+                )
+                .throw();
+            }
+
+            if self.config.suppress_output {
+                return Ok(());
+            }
+
+            if let Some(character) = char::from_u32(character as u32) {
+                match write!(stdout(), "{}", character) {
+                    Ok(val) => val,
+                    Err(_) => {
+                        return VmErrorKind::IOError(
+                            self.instructions[self.instruction_pointer].clone(),
+                        )
+                        .throw()
+                    }
+                };
+                match stdout().flush() {
+                    Ok(val) => val,
+                    Err(_) => {
+                        return VmErrorKind::IOError(
+                            self.instructions[self.instruction_pointer].clone(),
+                        )
+                        .throw()
+                    }
+                };
+
+                return Ok(());
+            }
+        }
+
+        VmErrorKind::StackUnderflow(self.instructions[self.instruction_pointer].clone()).throw()
+    }
+
+    fn out_int(&mut self) -> Result<(), VmError> {
+        if let Some(num) = self.stack.pop() {
+            if self.config.suppress_output {
+                return Ok(());
+            }
+            match write!(stdout(), "{}", num) {
+                Ok(val) => val,
+                Err(_) => {
+                    return VmErrorKind::IOError(
+                        self.instructions[self.instruction_pointer].clone(),
+                    )
+                    .throw()
+                }
+            };
+            match stdout().flush() {
+                Ok(val) => val,
+                Err(_) => {
+                    return VmErrorKind::IOError(
+                        self.instructions[self.instruction_pointer].clone(),
+                    )
+                    .throw()
+                }
+            };
+
+            return Ok(());
+        }
+
+        VmErrorKind::StackUnderflow(self.instructions[self.instruction_pointer].clone()).throw()
+    }
+
+    fn read_char(&mut self) -> Result<(), VmError> {
+        #[cfg(target_arch = "wasm32")]
+        unimplemented!();
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(addr) = self.stack.pop() {
+            if addr < 0 || addr as usize >= self.heap.len() {
+                return VmErrorKind::NumberOutOfBoundsError(
+                    self.instructions[self.instruction_pointer].clone(),
+                    addr,
+                    0,
+                    i32::MAX,
+                )
+                .throw();
+            }
+
+            match stdout().flush() {
+                Ok(val) => val,
+                Err(_) => {
+                    return VmErrorKind::IOError(
+                        self.instructions[self.instruction_pointer].clone(),
+                    )
+                    .throw()
+                }
+            };
+            return match Getch::new().getch() {
+                Ok(val) => {
+                    self.heap[addr as usize] = val as i32;
+                    match write!(stdout(), "{}", char::from_u32(val as u32).unwrap()) {
+                        Ok(val) => val,
+                        Err(_) => {
+                            return VmErrorKind::IOError(
+                                self.instructions[self.instruction_pointer].clone(),
+                            )
+                            .throw()
+                        }
+                    };
+                    match stdout().flush() {
+                        Ok(val) => val,
+                        Err(_) => {
+                            return VmErrorKind::IOError(
+                                self.instructions[self.instruction_pointer].clone(),
+                            )
+                            .throw()
+                        }
+                    };
+
+                    Ok(())
+                }
+                Err(_) => {
+                    return VmErrorKind::IOError(
+                        self.instructions[self.instruction_pointer].clone(),
+                    )
+                    .throw()
+                }
+            };
+        }
+
+        VmErrorKind::StackUnderflow(self.instructions[self.instruction_pointer].clone()).throw()
+    }
+
+    fn read_int(&mut self) -> Result<(), VmError> {
+        if let Some(addr) = self.stack.pop() {
+            if addr < 0 || addr as usize >= self.heap.len() {
+                return VmErrorKind::NumberOutOfBoundsError(
+                    self.instructions[self.instruction_pointer].clone(),
+                    addr,
+                    0,
+                    self.heap.len() as i32 - 1,
+                )
+                .throw();
+            }
+            match stdout().flush() {
+                Ok(val) => val,
+                Err(_) => {
+                    return VmErrorKind::IOError(
+                        self.instructions[self.instruction_pointer].clone(),
+                    )
+                    .throw()
+                }
+            };
+            let mut input_text = String::new();
+            match stdin().read_line(&mut input_text) {
+                Ok(val) => val,
+                Err(_) => {
+                    return VmErrorKind::IOError(
+                        self.instructions[self.instruction_pointer].clone(),
+                    )
+                    .throw()
+                }
+            };
+
+            let trimmed = input_text.trim();
+            let num = match trimmed.parse::<i32>() {
+                Ok(val) => val,
+                Err(_) => {
+                    return VmErrorKind::IOError(
+                        self.instructions[self.instruction_pointer].clone(),
+                    )
+                    .throw()
+                }
+            };
+            self.heap[addr as usize] = num;
+
+            return Ok(());
+        }
+
+        VmErrorKind::IOError(self.instructions[self.instruction_pointer].clone()).throw()
+    }
+
+    pub fn exec(&mut self) -> Result<(), VmError> {
         if self.config.debug {
             dbg!(&self.stack);
             dbg!(&self.call_stack);
@@ -511,36 +967,36 @@ impl Vm {
         if self.config.debug_heap {
             dbg!(self.generate_debug_heap_dump());
         }
-        let res = match &self.instructions[ip] {
-            Instruction::PushStack(num) => {}
-            Instruction::DuplicateStack => {}
-            Instruction::CopyNthStack(num) => {}
-            Instruction::SwapStack => {}
-            Instruction::DiscardStack => {}
-            Instruction::SlideNStack(num) => {}
-            Instruction::Add => {}
-            Instruction::Subtract => {}
-            Instruction::Multiply => {}
-            Instruction::IntegerDivision => {}
-            Instruction::Modulo => {}
-            Instruction::StoreHeap => {}
-            Instruction::RetrieveHeap => {}
-            Instruction::Mark(label) => {}
-            Instruction::Call(label) => {}
-            Instruction::Jump(label) => {}
-            Instruction::JumpZero(label) => {}
-            Instruction::JumpNegative(label) => {}
-            Instruction::Return => {}
-            Instruction::Exit => {}
-            Instruction::OutCharacter => {}
-            Instruction::OutInteger => {}
-            Instruction::ReadCharacter => {}
-            Instruction::ReadInteger => {}
+        let res = match self.instructions[self.instruction_pointer] {
+            Instruction::PushStack(_) => self.push_stack(),
+            Instruction::DuplicateStack => self.duplicate_stack(),
+            Instruction::CopyNthStack(_) => self.copy_nth_stack(),
+            Instruction::SwapStack => self.swap_stack(),
+            Instruction::DiscardStack => self.discard_stack(),
+            Instruction::SlideNStack(_) => self.slide_n_stack(),
+            Instruction::Add => self.add(),
+            Instruction::Subtract => self.subtract(),
+            Instruction::Multiply => self.multiply(),
+            Instruction::IntegerDivision => self.integer_division(),
+            Instruction::Modulo => self.modulo(),
+            Instruction::StoreHeap => self.store_heap(),
+            Instruction::RetrieveHeap => self.retrieve_heap(),
+            Instruction::Mark(_) => self.mark(),
+            Instruction::Call(_) => self.call(),
+            Instruction::Jump(_) => self.jump(),
+            Instruction::JumpZero(_) => self.jump_zero(),
+            Instruction::JumpNegative(_) => self.jump_negative(),
+            Instruction::Return => self.r#return(),
+            Instruction::Exit => self.exit(),
+            Instruction::OutCharacter => self.out_char(),
+            Instruction::OutInteger => self.out_int(),
+            Instruction::ReadCharacter => self.read_char(),
+            Instruction::ReadInteger => self.read_int(),
         };
 
         self.instruction_pointer += 1;
 
-        Ok(res)
+        res
     }
 }
 

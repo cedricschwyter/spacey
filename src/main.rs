@@ -13,7 +13,7 @@ const ARG_SOURCE_TYPE: &str = "source-type";
 fn args() -> ArgMatches {
     App::new("spacey")
         .about("a lightweight whitespace interpreter")
-        .version("0.1.0")
+        .version("1.2.0")
         .author("Cedric Schwyter <cedricschwyter@bluewin.ch>")
         .arg(
             Arg::new(ARG_FILE)
@@ -21,7 +21,15 @@ fn args() -> ArgMatches {
                 .long(ARG_FILE)
                 .takes_value(true)
                 .required(true)
-                .help("whitespace source file to interpret"),
+                .help("source file to interpret"),
+        )
+        .arg(
+            Arg::new(ARG_SOURCE_TYPE)
+                .short('t')
+                .long(ARG_SOURCE_TYPE)
+                .takes_value(true)
+                .required(true)
+                .help("type of source file"),
         )
         .arg(
             Arg::new(ARG_HEAP_SIZE)
@@ -37,7 +45,7 @@ fn args() -> ArgMatches {
                 .long(ARG_RAW)
                 .required(false)
                 .takes_value(false)
-                .help("prints intermediate representation of instructions"),
+                .help("prints raw, parsed representation of instructions"),
         )
         .arg(
             Arg::new(ARG_DEBUG)
