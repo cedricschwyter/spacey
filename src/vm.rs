@@ -1,4 +1,4 @@
-use crate::parser::{ParseError, SourceType};
+use crate::parser::{ParseError, Parser, SourceType};
 use crate::{Instruction, WsParser};
 #[cfg(not(target_arch = "wasm32"))]
 use getch::Getch;
@@ -385,14 +385,20 @@ impl Vm {
     /// - `config` The configuration of the interpreter
     pub fn new(config: VmConfig) -> Result<Vm, VmError> {
         #[cfg(not(target_arch = "wasm32"))]
-        let source_or_source_file = &config.file_name;
-        #[cfg(target_arch = "wasm32")]
-        let source_or_source_file = &config.source;
-        let mut parser = match config.source_type {
-            SourceType::Whitespace => match WsParser::new(source_or_source_file) {
+        let mut parser: Box<dyn Parser> = match config.source_type {
+            SourceType::Whitespace => match WsParser::new(&config.file_name) {
                 Ok(content) => content,
                 Err(err) => return VmErrorKind::ParseError(err).throw(),
             },
+            SourceType::Malbolge => unimplemented!(),
+            SourceType::Brainfuck => unimplemented!(),
+        };
+        #[cfg(target_arch = "wasm32")]
+        let mut parser: Box<dyn Parser> = match config.source_type {
+            SourceType::Whitespace => Box::new(match WsParser::new(&config.source) {
+                Ok(content) => content,
+                Err(err) => return VmErrorKind::ParseError(err).throw(),
+            }),
             SourceType::Malbolge => unimplemented!(),
             SourceType::Brainfuck => unimplemented!(),
         };

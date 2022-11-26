@@ -8,7 +8,6 @@ use memmap::Mmap;
 #[cfg(not(target_arch = "wasm32"))]
 use std::fs::File;
 use std::rc::Rc;
-use wasm_bindgen::prelude::wasm_bindgen;
 
 pub const SPACE: u8 = b' ';
 pub const TAB: u8 = b'\t';
@@ -75,7 +74,6 @@ pub(crate) enum WsParamKind {
 
 /// Tokenized representation for a whitespace instruction.
 /// Contains data as well as metadata about whitespace instructions
-#[wasm_bindgen]
 #[derive(Debug, PartialEq, Clone)]
 pub struct WsInstruction {
     pub(crate) imp: WsImpKind,
@@ -97,7 +95,6 @@ impl Instr for WsInstruction {
 }
 
 /// The component responsible for reading and parsing the source file
-#[wasm_bindgen]
 #[derive(Debug)]
 pub struct WsParser {
     #[cfg(not(target_arch = "wasm32"))]

@@ -5,10 +5,11 @@ use std::{
     str::FromStr,
 };
 
-use wasm_bindgen::JsValue;
+use wasm_bindgen::{prelude::wasm_bindgen, JsValue};
 
 use crate::Instruction;
 
+#[wasm_bindgen]
 pub enum SourceType {
     Whitespace,
     Malbolge,
