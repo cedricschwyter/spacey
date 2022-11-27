@@ -21,7 +21,7 @@ clap = "3.2.5"
 wasm-bindgen = "0.2.83"
 
 [[bench]]
-name = "interpreter"
+name = "vm"
 harness = false
 
 [[bench]]

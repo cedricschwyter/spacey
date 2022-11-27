@@ -101,7 +101,7 @@ fn main() -> Result<(), VmError> {
         debug_heap,
         false,
     );
-    let mut interpreter = Vm::new(config)?;
+    let mut vm = Vm::new(config)?;
     let end = Instant::now();
     if !quiet {
         println!(
@@ -116,11 +116,12 @@ fn main() -> Result<(), VmError> {
             println!("starting to execute whitespace routine...\n\n");
         }
         let start = Instant::now();
-        interpreter.run()?;
+        vm.run()?;
         let end = Instant::now();
         if !quiet {
+            println!("\n\nexecuted {} instructions", vm.instruction_count);
             println!(
-                "\n\n\nroutine took {} ms ({} ns)",
+                "\n\nroutine took {} ms ({} ns)",
                 end.duration_since(start).as_millis(),
                 end.duration_since(start).as_nanos()
             );

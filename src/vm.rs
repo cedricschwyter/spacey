@@ -22,6 +22,7 @@ pub struct Vm {
     instruction_pointer: usize,
     instructions: Vec<Instruction>,
     done: bool,
+    pub instruction_count: usize,
 }
 
 /// Configuration options for the interpreter
@@ -456,6 +457,7 @@ impl Vm {
             heap,
             instruction_pointer,
             done,
+            instruction_count: 0,
         })
     }
 
@@ -968,6 +970,7 @@ impl Vm {
     }
 
     pub fn exec(&mut self) -> Result<(), VmError> {
+        self.instruction_count += 1;
         if self.config.debug {
             dbg!(&self.stack);
             dbg!(&self.call_stack);
