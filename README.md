@@ -5,7 +5,7 @@
 # spacey
 a tiny, performant, wasm-ready stack machine/virtual machine in rust
 
-## supported and planned backends:
+## supported and planned frontends:
 - [x] whitespace
 - [ ] malbolge
 - [ ] brainfuck
