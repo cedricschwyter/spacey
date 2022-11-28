@@ -42,5 +42,5 @@ to show the help screen.
 execute whitespace-files like:
 
 ```bash
-cargo run --release -q -- -f ws/hello_world.ws
+cargo run --release -q -- -f ws/hello_world.ws -t whitespace
 ```
