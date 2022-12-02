@@ -85,6 +85,7 @@ pub struct WsInstruction {
 }
 
 impl Instr for WsInstruction {
+    #[cfg(test)]
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
