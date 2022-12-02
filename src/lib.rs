@@ -1,3 +1,4 @@
+pub mod bf;
 pub mod ir;
 pub mod parser;
 pub mod vm;
