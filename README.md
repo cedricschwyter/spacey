@@ -3,7 +3,7 @@
 </div>
 
 # spacey
-a tiny, performant, wasm-ready stack machine/virtual machine in rust
+a tiny, performant, wasm-ready virtual machine in rust
 
 ## supported and planned frontends:
 - [x] whitespace
