@@ -240,14 +240,14 @@ impl WsParser {
     }
 
     #[cfg(target_arch = "wasm32")]
-    pub fn new(source: &str) -> Result<WsParser, ParseError> {
+    pub fn new(source: &str) -> Result<Box<dyn Parser>, ParseError> {
         let index = 0;
 
-        Ok(WsParser {
+        Ok(Box::new(WsParser {
             source: source.to_string().as_bytes().to_vec(),
             token_index: index,
             instruction_index: index,
-        })
+        }))
     }
 
     fn next(&mut self) -> Option<u8> {
