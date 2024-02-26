@@ -1,3 +1,4 @@
+use crate::bf::BfParser;
 use crate::parser::{ParseError, Parser, SourceType};
 use crate::{Instruction, WsParser};
 #[cfg(not(target_arch = "wasm32"))]
@@ -395,7 +396,10 @@ impl Vm {
                 Err(err) => return VmErrorKind::ParseError(err).throw(),
             },
             SourceType::Malbolge => unimplemented!(),
-            SourceType::Brainfuck => unimplemented!(),
+            SourceType::Brainfuck => match BfParser::new(source) {
+                Ok(content) => content,
+                Err(err) => return VmErrorKind::ParseError(err).throw(),
+            },
         };
         let mut instructions = vec![];
         for instr in &mut parser {
